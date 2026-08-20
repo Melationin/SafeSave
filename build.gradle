@@ -1,0 +1,89 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+def minecraftVer = stonecutter.current.version
+
+base {
+    archivesName = "${project.archives_base_name}-${minecraftVer}"
+}
+
+repositories {
+    maven {
+        url = 'https://maven.fabricmc.net/'
+    }
+    maven {
+        url = 'https://masa.dy.fi/maven'
+    }
+    maven {
+        url = 'https://api.modrinth.com/maven'
+    }
+    mavenCentral()
+}
+
+loom {
+    mods {
+        "safesave" {
+            sourceSet sourceSets.main
+        }
+    }
+
+    runConfigs.all {
+        ideConfigGenerated true
+        runDir "../../run"
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${stonecutter.current.project}"
+    implementation "net.fabricmc:fabric-loader:${property("loader_version")}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}"
+    implementation "carpet:fabric-carpet:${property("carpet_core_version")}"
+
+    annotationProcessor project(":processor")
+    compileOnly project(":processor")
+}
+
+processResources {
+    inputs.property "minecraft", stonecutter.current.version
+
+    filesMatching("fabric.mod.json") {
+        expand([
+                "minecraftVer": project.findProperty("minecraft_ver") ?: stonecutter.current.version,
+                "modVer"      : mod_version
+        ])
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+    inputs.property "archivesName", "${project.base.archivesName}-${minecraftVer}"
+
+    from(rootProject.file("LICENSE")) {
+        rename { "${it}_${inputs.properties.archivesName}" }
+    }
+}
+
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+
+    repositories {
+    }
+}
+
+stonecutter {
+    // Subproject configuration
+}

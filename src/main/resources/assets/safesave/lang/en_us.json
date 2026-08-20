@@ -1,0 +1,7 @@
+{
+  "carpet.category.example": "Example",
+  "carpet.rule.exampleFeature.name": "Example Feature",
+  "carpet.rule.exampleFeature.desc": "A simple example Carpet rule.",
+  "carpet.rule.safeSave.name": "Safe Save",
+  "carpet.rule.safeSave.desc": "Persist scheduled ticks and block events losslessly across a restart. Absolute triggerTick, global subTickOrder, Level.subTickCount and the ordered block-event queue are stored in <world>/safesave.dat. The server freezes before its first tick so the restored state can be inspected; run '/tick unfreeze' to resume."
+}

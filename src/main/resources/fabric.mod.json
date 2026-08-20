@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "safesave",
+  "version": "${modVer}",
+
+  "name": "SafeSave",
+  "description": "Lossless persistence of scheduled ticks and block events across a server restart, plus tick/block-event/world-tick debug instrumentation.",
+  "authors": [
+    "You"
+  ],
+  "contact": {},
+
+  "license": "MIT",
+
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.example.carpet.ExampleCarpetServer"
+    ]
+  },
+  "mixins": [
+    "safesave.mixins.json"
+  ],
+
+  "depends": {
+    "minecraft": "${minecraftVer}",
+    "fabricloader": ">=0.4.0",
+    "carpet": "*"
+  }
+}

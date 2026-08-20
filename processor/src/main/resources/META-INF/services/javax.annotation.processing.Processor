@@ -1,0 +1,3 @@
+com.example.carpet.annotation.RuleRegisterProcessor
+com.example.carpet.annotation.CommandRegisterProcessor
+com.example.carpet.annotation.LoggerRegisterProcessor

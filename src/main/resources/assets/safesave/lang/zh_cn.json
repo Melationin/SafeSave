@@ -1,0 +1,7 @@
+{
+  "carpet.category.example": "示例",
+  "carpet.rule.exampleFeature.name": "示例功能",
+  "carpet.rule.exampleFeature.desc": "一个简单的 Carpet 规则示例。",
+  "carpet.rule.safeSave.name": "安全保存",
+  "carpet.rule.safeSave.desc": "重启后无损恢复计划刻与方块事件：把绝对 triggerTick、全局 subTickOrder、Level.subTickCount 以及有序的方块事件队列存入 <world>/safesave.dat。服务器会在第一次 tick 前 freeze 以便检查恢复结果，确认后用 '/tick unfreeze' 继续。"
+}

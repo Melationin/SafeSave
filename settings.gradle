@@ -1,0 +1,37 @@
+pluginManagement {
+    repositories {
+        maven {
+            url 'https://maven.aliyun.com/repository/public'
+        }
+        maven {
+            url 'https://maven.aliyun.com/repository/gradle-plugin'
+        }
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        maven { url = "https://api.modrinth.com/maven" }
+        maven {
+            name = "KikuGie Snapshots"
+            url = "https://maven.kikugie.dev/snapshots"
+        }
+        mavenCentral()
+        mavenLocal()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id("dev.kikugie.stonecutter") version "0.7.11"
+}
+
+include("processor")
+
+stonecutter {
+    kotlinController = false
+    centralScript = "build.gradle"
+    create(getRootProject()) {
+        versions "26.1", "26.2"
+        vcsVersion = "26.1"
+    }
+}
