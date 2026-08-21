@@ -15,6 +15,10 @@ tools/setup-void-server.sh          # provision a void world first (recommended,
 
 Requires a JDK 25 toolchain (`sourceCompatibility = 25`).
 
+See **[`DESIGN.md`](DESIGN.md)** for the full change inventory: every injection point and why it was
+chosen, the design decisions and rejected alternatives, the bugs found during development, and an
+explicit list of what is and is not verified.
+
 | | |
 |---|---|
 | mod id | `safesave` |
