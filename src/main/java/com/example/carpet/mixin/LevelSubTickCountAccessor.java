@@ -1,8 +1,11 @@
 package com.example.carpet.mixin;
 
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.TickingBlockEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
+
+import java.util.List;
 
 /**
  * Access to {@code Level.subTickCount} — the global, monotonically increasing counter handed out by
@@ -19,4 +22,11 @@ public interface LevelSubTickCountAccessor {
 
     @Accessor("subTickCount")
     void carpetExample$setSubTickCount(long subTickCount);
+
+    /**
+     * The block-entity ticker list, iterated in insertion order by {@code tickBlockEntities}.
+     * Needed to restore the original relative tick order of moving pistons after a reload.
+     */
+    @Accessor("blockEntityTickers")
+    List<TickingBlockEntity> carpetExample$blockEntityTickers();
 }

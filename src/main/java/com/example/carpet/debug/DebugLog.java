@@ -180,6 +180,15 @@ public final class DebugLog {
         LOG.warn("[safe-save] " + format, args);
     }
 
+    private static final java.util.Set<String> WARNED_ONCE = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Logs a warning at most once per {@code key}, so a per-chunk anomaly cannot flood the log. */
+    public static void warnOnce(final String key, final String format, final Object... args) {
+        if (WARNED_ONCE.add(key)) {
+            LOG.warn("[safe-save] " + format, args);
+        }
+    }
+
     public static Identifier tryParse(final String id) {
         return Identifier.tryParse(id);
     }

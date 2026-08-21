@@ -20,7 +20,7 @@ Requires a JDK 25 toolchain (`sourceCompatibility = 25`).
 | mod id | `safesave` |
 | carpet rule | `safeSave` (default `false`) |
 | command | `/safesave` |
-| data file | `<world>/safesave.dat` |
+| data file | `<world>/safesave.dat` (format v3, reads v1/v2) |
 
 ---
 
@@ -36,9 +36,10 @@ A chunk stores its ticks as `SavedTick(type, pos, int delay, priority)`. On load
 * `Level.subTickCount` is never persisted at all — it resets to `0`;
 * scheduling a tick does **not** mark the chunk unsaved, so a chunk whose only change was a
   scheduled tick is never rewritten and the tick is silently lost;
-* and `ServerLevel.blockEvents` is **not persisted anywhere at all** — every in-flight block event is
+* `ServerLevel.blockEvents` is **not persisted anywhere at all** — every in-flight block event is
   discarded on restart (a piston that queued `TRIGGER_EXTEND` but had not executed it simply
-  forgets).
+  forgets);
+* and a **moving piston** loses fidelity four separate ways, see §8.
 
 ## 2. What this does
 
@@ -221,3 +222,114 @@ On restart the event is reloaded, the server freezes itself, and `/tick unfreeze
 
 The piston extends from an event that vanilla would have thrown away, the observer tick fires with its
 original `trigger`/`sub`, and the first newly scheduled tick continues from the restored counter (72).
+
+## 8. Moving piston fidelity
+
+Four independent defects in how a mid-flight piston survives a save/load. All four are fixed; the
+first is measurable.
+
+### #2 — vanilla saves `progressO`, not `progress`
+
+```java
+// PistonMovingBlockEntity
+saveAdditional: output.putFloat("progress", this.progressO);   // the PREVIOUS tick's value
+loadAdditional: this.progress = input.getFloatOr("progress", 0.0F);
+                this.progressO = this.progress;
+```
+
+`tick()` sets `progressO = progress` at its head, so the two always differ by 0.5 while a piston is in
+flight. Saving the older value **rewinds the piston half a step**, costing exactly one tick per
+save/load cycle (once — it does not accumulate, since a frozen piston is not ticked and re-saves the
+same value).
+
+Worse, `moveStuckEntities` (honey block, horizontal only) applies `deltaProgress` unconditionally with
+**no overlap test**, so repeating a half step drags a passenger an extra 0.5:
+
+```java
+for (Entity entity : level.getEntities(null, aabb, e -> matchesStickyCritera(aabb, e, pos)))
+    moveEntityByPiston(movement, entity, deltaProgress, movement);   // always 0.5
+```
+
+`moveCollidedEntities` *does* intersection-test, so the ordinary push side is largely unaffected — the
+asymmetry is what makes this easy to miss.
+
+**Measured**, sticky piston + honey block + armour stand passenger, saved mid-flight and reloaded:
+
+| `safeSave` | honey block moved | passenger dragged | passenger final x |
+|---|---|---|---|
+| `false` (vanilla) | 1.0 | **1.5** ❌ | 3.0 |
+| `true` (fixed) | 1.0 | **1.0** ✅ | 2.5 |
+
+The bug is visible in the NBT itself — live `progress` is 0.5 while the serialized form says `0.0f`:
+
+```
+{ ..., id: "minecraft:piston", extending: 1b, progress: 0.0f,
+  safesave_progress: 0.5f, safesave_progress_o: 0.0f,
+  safesave_last_ticked: 202L, safesave_order: 0L }
+```
+
+Vanilla's `progress` key is left **exactly as vanilla writes it**, so removing this mod degrades to
+vanilla behaviour rather than corrupting anything. A missing `safesave_progress` is the sentinel for
+"written before this mod / with the rule off", in which case vanilla's already-applied values are left
+alone.
+
+### #5 — `lastTicked` is not persisted
+
+`PistonBaseBlock.checkIfExtend` uses `getGameTime() == pistonEntity.getLastTicked()` as one of three
+disjuncts deciding `TRIGGER_DROP` (2) vs `TRIGGER_CONTRACT` (1). The other two usually mask its loss,
+but not when `isHandlingTick()` is false — i.e. **player-triggered** updates, which are processed after
+`level.tick()` has already cleared the flag. Now stored as an absolute game time.
+
+### #4 — block entity tick order
+
+`Level.blockEntityTickers` is a `List` ticked in insertion order. That order changes across a reload:
+
+| stage | order |
+|---|---|
+| before save | `moveBlocks` creates PMEs in reverse `toPush`, arm last → **creation order** |
+| written | `ChunkAccess.getBlockEntitiesPos()` = `Sets.newHashSet(...)` → **hash order** |
+| loaded | `registerAllBlockEntitiesAfterLevelLoad` iterates `pendingBlockEntities` (`HashMap`) → **hash order** |
+
+It is deterministic, just unrelated to creation order — and it matters when two adjacent pistons
+finalise on the same tick, because each runs `updateFromNeighbourShapes` and so observes the other's
+result. A persisted creation sequence number is used to rewrite **only the ticker slots occupied by
+moving pistons**, in ascending order; every other ticker keeps its exact index.
+
+The rebuild filters candidates on `getBlockState(pos).is(Blocks.MOVING_PISTON)` rather than
+`getBlockEntity`, because `Level.getBlockEntity` uses `EntityCreationType.IMMEDIATE` and would promote
+pending block entities level-wide, creating them earlier than vanilla does. (It also sidesteps the
+`BlockEntityType` → `BlockEntityTypes` rename between 26.1 and 26.2.)
+
+### #3 — a cross-chunk push is not atomic on load
+
+A push spans up to 12 blocks plus sticky branches, so it routinely crosses chunk boundaries — yet PME
+ticking is gated **per chunk** (`LevelChunk.isTicking`). On load chunks come up staggered, so the halves
+of one push finalise on different ticks; since finalisation runs `updateFromNeighbourShapes` and
+`neighborChanged`, the early half resolves against a world where the rest of the structure is still
+`MOVING_PISTON`, and a slime/honey structure can tear in two.
+
+The chunks holding a moving piston are recorded in the side file (`piston_chunks`, v3) — they must be
+known *before* any of them is loaded, which is impossible by scanning. On load the gate waits until
+every one of them satisfies `isPositionTickingWithEntitiesLoaded` and then reports:
+
+```
+[safe-save] minecraft:overworld: all 1 chunk(s) holding a moving piston are now block-ticking -
+            the whole push will resume on one tick. Safe to '/tick unfreeze'.
+```
+
+This deliberately **does not add chunk tickets**: force-loading chunks the player never asked for would
+change world behaviour, and a chunk outside the simulation distance never becomes tickable in vanilla
+either — so waiting forever would be wrong. Hence a 600-server-tick timeout with a warning naming the
+chunks. Note the timeout counts *server* ticks, since `gameTime` does not advance while frozen.
+
+> Freezing until the chunks are ready also removes vanilla's scheduled-tick drift for free: the
+> re-anchor is `triggerTick = T_unpack + delay`, and `gameTime` does not advance while frozen, so every
+> chunk loaded during the freeze gets `T_unpack == T_save`. It does **not** fix the per-chunk
+> `subTickOrder` renumbering or the `markUnsaved` loss — those still need the side file.
+
+### Still unfixed
+
+* **#6 `MOVING_PISTON` without its block entity is a permanent ghost.** `MovingPistonBlock.newBlockEntity`
+  returns `null`, so the block cannot rebuild its own block entity; it renders `INVISIBLE` with an empty
+  collision shape and can only be cleared by right-clicking it. Both parts live in the same chunk NBT so
+  they are normally consistent — this only triggers on corruption or a registry change.

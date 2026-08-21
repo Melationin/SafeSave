@@ -21,6 +21,9 @@ import net.minecraft.world.level.BlockEventData;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.TickingBlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.storage.LevelResource;
@@ -33,8 +36,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -82,6 +87,21 @@ public final class SafeSaveManager {
     private static boolean freezeArmed;
     /** Dimensions whose one-shot first-world-tick restore has already run. */
     private static final Set<String> firstTickDone = new HashSet<>();
+    /** Monotonic creation counter handed to each new PistonMovingBlockEntity (#4). */
+    private static final java.util.concurrent.atomic.AtomicLong pistonOrder = new java.util.concurrent.atomic.AtomicLong();
+    /**
+     * Bumped whenever a moving piston is loaded from NBT, so its ticker slot ordering must be rebuilt
+     * (#4). A generation counter rather than a boolean because {@code loadAdditional} runs before the
+     * block entity has a level, so the dimension is unknown at that point - each level instead
+     * remembers the generation it last rebuilt at.
+     */
+    private static final java.util.concurrent.atomic.AtomicLong pistonOrderGeneration =
+            new java.util.concurrent.atomic.AtomicLong();
+    private static final Map<String, Long> pistonOrderRebuiltAt = new HashMap<>();
+    /** Server tick at which the piston-readiness wait started; -1 = not waiting (#3). */
+    private static int pistonWaitStartTick = -1;
+    /** Dimensions that already reported piston readiness (#3). */
+    private static final Set<String> pistonWaitReported = new HashSet<>();
     /** Diagnostics for {@code /safesave status}. */
     private static int loadedTickCount;
     private static int restoredTickCount;
@@ -95,6 +115,73 @@ public final class SafeSaveManager {
 
     public static boolean enabled() {
         return SafeSaveRules.safeSave;
+    }
+
+    // ------------------------------------------------- moving piston order (#4)
+
+    /** @return the next creation sequence number for a freshly built moving piston */
+    public static long nextPistonOrder() {
+        return pistonOrder.getAndIncrement();
+    }
+
+    /** Keeps newly created pistons strictly after every order value restored from disk. */
+    public static void observePistonOrder(final long restored) {
+        pistonOrder.accumulateAndGet(restored + 1L, Math::max);
+    }
+
+    public static void markPistonTickOrderDirty() {
+        pistonOrderGeneration.incrementAndGet();
+    }
+
+    /**
+     * Restores the original relative tick order of moving pistons within
+     * {@code Level.blockEntityTickers}.
+     *
+     * <p>Only the slots currently occupied by moving pistons are rewritten, in ascending creation
+     * order; every other ticker keeps its exact index. That fixes piston-vs-piston ordering without
+     * perturbing anything else, which matters because two adjacent pistons finalising in the same
+     * tick each run {@code updateFromNeighbourShapes} and so observe each other's result.
+     *
+     * <p>Safe to call from {@code ServerLevel.tick} HEAD: {@code tickingBlockEntities} is false there,
+     * so no iteration is in progress.
+     */
+    private static void rebuildPistonTickOrder(final ServerLevel level) {
+        List<TickingBlockEntity> tickers = ((LevelSubTickCountAccessor) level).carpetExample$blockEntityTickers();
+        List<Integer> slots = new ArrayList<>();
+        List<TickingBlockEntity> pistons = new ArrayList<>();
+
+        // Filter on the block state first: a palette read is cheap and side-effect free, whereas
+        // Level.getBlockEntity uses EntityCreationType.IMMEDIATE and would promote pending block
+        // entities across the whole level, creating them earlier than vanilla does.
+        // (Checking the state rather than the ticker's registered type also avoids the
+        // BlockEntityType/BlockEntityTypes class rename between 26.1 and 26.2.)
+        for (int i = 0; i < tickers.size(); i++) {
+            TickingBlockEntity ticker = tickers.get(i);
+            if (ticker.isRemoved() || !level.getBlockState(ticker.getPos()).is(Blocks.MOVING_PISTON)) {
+                continue;
+            }
+            BlockEntity blockEntity = level.getBlockEntity(ticker.getPos());
+            if (blockEntity instanceof PistonOrderHolder holder && holder.carpetExample$pistonOrder() != Long.MIN_VALUE) {
+                slots.add(i);
+                pistons.add(ticker);
+            }
+        }
+        if (pistons.size() < 2) {
+            return;
+        }
+
+        pistons.sort((a, b) -> {
+            BlockEntity beA = level.getBlockEntity(a.getPos());
+            BlockEntity beB = level.getBlockEntity(b.getPos());
+            long orderA = beA instanceof PistonOrderHolder h ? h.carpetExample$pistonOrder() : Long.MAX_VALUE;
+            long orderB = beB instanceof PistonOrderHolder h ? h.carpetExample$pistonOrder() : Long.MAX_VALUE;
+            return Long.compare(orderA, orderB);
+        });
+        for (int k = 0; k < slots.size(); k++) {
+            tickers.set(slots.get(k), pistons.get(k));
+        }
+        DebugLog.info("{}: rebuilt tick order of {} moving piston(s) by creation sequence",
+                dimensionId(level), pistons.size());
     }
 
     public static SafeSaveStore store() {
@@ -148,6 +235,9 @@ public final class SafeSaveManager {
         restoredBlockEventCount = 0;
         droppedBlockEventCount = 0;
         staleWarned.clear();
+        pistonWaitStartTick = -1;
+        pistonWaitReported.clear();
+        pistonOrderRebuiltAt.clear();
 
         if (!enabled()) {
             DebugLog.info("rule 'safeSave' is off; not reading {}", FILE_NAME);
@@ -281,6 +371,95 @@ public final class SafeSaveManager {
                 dimensionId(level), restored, existing.size());
     }
 
+    // -------------------------------------- moving piston chunk readiness (#3)
+
+    /** How many server ticks to wait for a mid-flight push's chunks before giving up. */
+    private static final int PISTON_WAIT_TIMEOUT_TICKS = 600;
+
+    /**
+     * A piston push can span up to 12 blocks plus sticky branches, so it routinely crosses chunk
+     * boundaries - yet {@code PistonMovingBlockEntity} ticking is gated <em>per chunk</em>
+     * ({@code LevelChunk.isTicking}). On load, chunks come up staggered, so the halves of one push
+     * finalise on different ticks; because finalisation runs {@code updateFromNeighbourShapes} and
+     * {@code neighborChanged}, the early half resolves against a world where the rest of the structure
+     * is still {@code MOVING_PISTON}, and a slime/honey structure can tear in two.
+     *
+     * <p>This reports (and optionally releases) once every chunk recorded as holding a moving piston is
+     * actually tickable, so the whole push resumes on one tick.
+     *
+     * <p>Deliberately does <strong>not</strong> add chunk tickets: force-loading chunks the player never
+     * asked for would change world behaviour. A chunk outside the simulation distance therefore never
+     * becomes tickable - which is also true in vanilla, so waiting forever would be wrong. Hence the
+     * timeout.
+     */
+    private static void checkPistonChunksReady(final ServerLevel level) {
+        String dimension = dimensionId(level);
+        SafeSaveStore.DimensionData data = store.dimensionOrNull(dimension);
+        if (data == null || data.pistonChunksAwaitingTicking.isEmpty()) {
+            return;
+        }
+        if (pistonWaitStartTick < 0) {
+            pistonWaitStartTick = level.getServer().getTickCount();
+        }
+
+        data.pistonChunksAwaitingTicking.removeIf(level::isPositionTickingWithEntitiesLoaded);
+
+        if (data.pistonChunksAwaitingTicking.isEmpty()) {
+            if (pistonWaitReported.add(dimension)) {
+                DebugLog.info("{}: all {} chunk(s) holding a moving piston are now block-ticking - "
+                                + "the whole push will resume on one tick. Safe to '/tick unfreeze'.",
+                        dimension, data.pistonChunks.size());
+            }
+            return;
+        }
+
+        int waited = level.getServer().getTickCount() - pistonWaitStartTick;
+        if (waited > PISTON_WAIT_TIMEOUT_TICKS && pistonWaitReported.add(dimension)) {
+            DebugLog.warn("{}: gave up after {} server ticks waiting for {} chunk(s) holding a moving piston "
+                            + "to become block-ticking: {}. They are most likely outside the simulation "
+                            + "distance (vanilla would not tick them either); that push will resume in pieces.",
+                    dimension, waited, data.pistonChunksAwaitingTicking.size(),
+                    describeChunks(data.pistonChunksAwaitingTicking));
+        }
+    }
+
+    private static String describeChunks(final Set<Long> packed) {
+        StringBuilder sb = new StringBuilder();
+        int shown = 0;
+        for (Long key : packed) {
+            if (shown++ == 8) {
+                sb.append(", ...");
+                break;
+            }
+            if (shown > 1) {
+                sb.append(", ");
+            }
+            sb.append(ChunkPos.unpack(key));
+        }
+        return sb.toString();
+    }
+
+    /** {@code true} when this chunk currently holds at least one {@code PistonMovingBlockEntity}. */
+    private static boolean hasMovingPiston(final LevelChunk chunk) {
+        for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
+            if (blockEntity instanceof PistonOrderHolder) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Keeps {@link SafeSaveStore.DimensionData#pistonChunks} converged for one chunk. */
+    private static void recordPistonChunk(final ServerLevel level, final LevelChunk chunk) {
+        SafeSaveStore.DimensionData data = store.dimension(dimensionId(level));
+        long key = chunk.getPos().pack();
+        if (hasMovingPiston(chunk)) {
+            data.pistonChunks.add(key);
+        } else {
+            data.pistonChunks.remove(key);
+        }
+    }
+
     private static void bindDebugOwners(final ServerLevel level) {
         Object blockTicks = level.getBlockTicks();
         if (blockTicks instanceof TickOwnerAware aware) {
@@ -331,6 +510,15 @@ public final class SafeSaveManager {
             return;
         }
         String dimension = dimensionId(level);
+
+        // Runs every tick (including while frozen, since ServerLevel.tick itself is not gated).
+        long generation = pistonOrderGeneration.get();
+        if (pistonOrderRebuiltAt.getOrDefault(dimension, -1L) < generation) {
+            pistonOrderRebuiltAt.put(dimension, generation);
+            rebuildPistonTickOrder(level);
+        }
+        checkPistonChunksReady(level);
+
         if (!firstTickDone.add(dimension)) {
             return;
         }
@@ -528,6 +716,15 @@ public final class SafeSaveManager {
         if (!enabled() || store == null) {
             return;
         }
+        // Guard the cast: ChunkAccess.getBlockTicks() is only a LevelChunkTicks for a real LevelChunk.
+        // ImposterProtoChunk hands back BlackholeTickAccess.emptyContainer() when writes are disabled,
+        // which does not implement SafeTickContainer, so a blind cast would be a ClassCastException.
+        // snapshotLevel() already guards this way; this path did not.
+        recordPistonChunk(level, chunk);
+        if (!(chunk.getBlockTicks() instanceof SafeTickContainer)
+                || !(chunk.getFluidTicks() instanceof SafeTickContainer)) {
+            return;
+        }
         snapshot(level, chunk.getPos().pack(), chunk.getBlockTicks(), chunk.getFluidTicks());
     }
 
@@ -658,6 +855,10 @@ public final class SafeSaveManager {
             @SuppressWarnings("unchecked")
             TickContainerAccess<Fluid> fluidAccess = (TickContainerAccess<Fluid>) fluid;
             snapshot(level, key, blockAccess, fluidAccess);
+            LevelChunk loaded = level.getChunkSource().getChunkNow(ChunkPos.getX(key), ChunkPos.getZ(key));
+            if (loaded != null) {
+                recordPistonChunk(level, loaded);
+            }
             count++;
         }
         return count;

@@ -9,6 +9,7 @@
     "LevelSubTickCountAccessor",
     "LevelTicksMixin",
     "MinecraftServerSafeSaveMixin",
+    "PistonMovingBlockEntitySafeSaveMixin",
     "ServerLevelBlockEventsAccessor",
     "ServerLevelSafeSaveMixin"
   ],

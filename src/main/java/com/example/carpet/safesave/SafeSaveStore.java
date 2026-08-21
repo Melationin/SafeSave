@@ -27,11 +27,12 @@ import java.util.Map;
 public final class SafeSaveStore {
 
     /**
-     * Current on-disk layout. v1 = scheduled ticks only; v2 adds the ordered block-event queue.
+     * Current on-disk layout. v1 = scheduled ticks only; v2 adds the ordered block-event queue;
+     * v3 adds the set of chunks holding a moving piston.
      * Older versions are still readable ({@link #MIN_READABLE_VERSION}), they simply carry no
      * block events.
      */
-    public static final int FORMAT_VERSION = 2;
+    public static final int FORMAT_VERSION = 3;
 
     /** Oldest layout this build can still read. */
     public static final int MIN_READABLE_VERSION = 1;
@@ -50,6 +51,8 @@ public final class SafeSaveStore {
     private static final String KEY_FLUID_TICKS = "fluid";
     /** ordered queue of pending block events (v2+) */
     private static final String KEY_BLOCK_EVENTS = "block_events";
+    /** packed chunk positions that held a PistonMovingBlockEntity at save time (v3+) */
+    private static final String KEY_PISTON_CHUNKS = "piston_chunks";
 
     /** Per-chunk absolute tick lists. Lists are stored in drain order purely for readability. */
     public record ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks) {
@@ -78,6 +81,15 @@ public final class SafeSaveStore {
         public final Set<Long> pendingRestore = new LinkedHashSet<>();
         /** {@code true} while {@link #blockEvents} still holds un-applied on-disk data. */
         public boolean blockEventsPendingRestore;
+        /**
+         * Packed chunk positions that held a {@code PistonMovingBlockEntity} when last observed.
+         * Recorded so that on load we know which chunks a mid-flight push spans <em>before</em> any of
+         * them are loaded - a set that cannot be discovered by scanning, since the chunks are not in
+         * memory yet (#3).
+         */
+        public final Set<Long> pistonChunks = new LinkedHashSet<>();
+        /** Subset of {@link #pistonChunks} read from disk and not yet confirmed tickable. Transient. */
+        public final Set<Long> pistonChunksAwaitingTicking = new LinkedHashSet<>();
         /** {@code Level.subTickCount} at save time; {@code -1} = unknown */
         public long subTickCount = -1L;
         /**
@@ -207,6 +219,15 @@ public final class SafeSaveStore {
             }
             levelTag.put(KEY_CHUNKS, chunks);
 
+            if (!data.pistonChunks.isEmpty()) {
+                long[] packed = new long[data.pistonChunks.size()];
+                int i = 0;
+                for (Long key : data.pistonChunks) {
+                    packed[i++] = key;
+                }
+                levelTag.putLongArray(KEY_PISTON_CHUNKS, packed);
+            }
+
             if (!data.blockEvents.isEmpty()) {
                 ListTag events = new ListTag();
                 for (SafeBlockEvent event : data.blockEvents) {
@@ -253,6 +274,13 @@ public final class SafeSaveStore {
                 DimensionData data = store.dimension(dimensionId);
                 data.subTickCount = levelTag.getLongOr(KEY_SUB_TICK_COUNT, -1L);
                 data.gameTime = levelTag.getLongOr(KEY_DEBUG_GAME_TIME, Long.MIN_VALUE);
+
+                levelTag.getLongArray(KEY_PISTON_CHUNKS).ifPresent(packed -> {
+                    for (long key : packed) {
+                        data.pistonChunks.add(key);
+                        data.pistonChunksAwaitingTicking.add(key);
+                    }
+                });
 
                 ListTag events = levelTag.getListOrEmpty(KEY_BLOCK_EVENTS);
                 for (int e = 0; e < events.size(); e++) {

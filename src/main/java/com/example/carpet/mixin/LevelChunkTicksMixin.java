@@ -1,5 +1,6 @@
 package com.example.carpet.mixin;
 
+import com.example.carpet.debug.DebugLog;
 import com.example.carpet.safesave.SafeTickContainer;
 import net.minecraft.world.ticks.LevelChunkTicks;
 import net.minecraft.world.ticks.SavedTick;
@@ -55,6 +56,18 @@ public abstract class LevelChunkTicksMixin implements SafeTickContainer {
 
     @Override
     public List<?> carpetExample$snapshotQueue() {
+        // tickQueue is `private final` with an initializer in vanilla, so this can only be null if
+        // something else in the environment interfered with LevelChunkTicks (another mixin on its
+        // constructor/field, or a mod/MC version this build was not compiled against). Crashing the
+        // autosave over it would be far worse than skipping one chunk, so report loudly and degrade.
+        if (this.tickQueue == null) {
+            DebugLog.warnOnce("null-tickQueue",
+                    "LevelChunkTicks.tickQueue is null on {} - skipping this chunk's scheduled ticks. "
+                            + "vanilla declares it 'private final' with an initializer, so another mod's mixin or a "
+                            + "version mismatch is the likely cause; please report the full log and mod list.",
+                    this.getClass().getName());
+            return List.of();
+        }
         return new ArrayList<>(this.tickQueue);
     }
 }
