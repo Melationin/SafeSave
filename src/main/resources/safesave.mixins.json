@@ -3,13 +3,18 @@
   "package": "com.example.carpet.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "AbstractMinecartSafeSaveMixin",
+    "EntitySafeSaveMixin",
     "ExampleMixin",
+    "FallingBlockEntitySafeSaveMixin",
     "LevelChunkSafeSaveMixin",
     "LevelChunkTicksMixin",
     "LevelSubTickCountAccessor",
     "LevelTicksMixin",
     "MinecraftServerSafeSaveMixin",
+    "MinecartTNTSafeSaveMixin",
     "PistonMovingBlockEntitySafeSaveMixin",
+    "PrimedTntSafeSaveMixin",
     "ServerLevelBlockEventsAccessor",
     "ServerLevelSafeSaveMixin"
   ],
