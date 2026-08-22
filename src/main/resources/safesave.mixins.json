@@ -1,22 +1,19 @@
 {
   "required": true,
-  "package": "com.example.carpet.mixin",
+  "package": "com.carpet.safesave.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "AbstractMinecartSafeSaveMixin",
-    "EntitySafeSaveMixin",
-    "ExampleMixin",
-    "FallingBlockEntitySafeSaveMixin",
-    "LevelChunkSafeSaveMixin",
+    "LevelChunkMixin",
     "LevelChunkTicksMixin",
-    "LevelSubTickCountAccessor",
     "LevelTicksMixin",
-    "MinecraftServerSafeSaveMixin",
-    "MinecartTNTSafeSaveMixin",
-    "PistonMovingBlockEntitySafeSaveMixin",
-    "PrimedTntSafeSaveMixin",
-    "ServerLevelBlockEventsAccessor",
-    "ServerLevelSafeSaveMixin"
+    "MinecraftServerMixin",
+    "ServerLevelMixin",
+    "entity.AbstractMinecartMixin",
+    "entity.EntityMixin",
+    "entity.FallingBlockEntityMixin",
+    "entity.PrimedTntMixin",
+    "entityBlock.PistonMovingBlockEntityMixin",
+    "util.TagValueOutputMixin"
   ],
   "injectors": {
     "defaultRequire": 1

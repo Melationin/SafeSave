@@ -26,6 +26,8 @@ repositories {
 }
 
 loom {
+    accessWidenerPath =rootProject.file("src/main/resources/safesave.classtweaker")
+
     mods {
         "safesave" {
             sourceSet sourceSets.main
@@ -43,9 +45,6 @@ dependencies {
     implementation "net.fabricmc:fabric-loader:${property("loader_version")}"
     implementation "net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}"
     implementation "carpet:fabric-carpet:${property("carpet_core_version")}"
-
-    annotationProcessor project(":processor")
-    compileOnly project(":processor")
 }
 
 processResources {

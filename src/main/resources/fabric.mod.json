@@ -15,13 +15,13 @@
   "environment": "*",
   "entrypoints": {
     "main": [
-      "com.example.carpet.ExampleCarpetServer"
+      "com.carpet.safesave.CarpetServer"
     ]
   },
   "mixins": [
     "safesave.mixins.json"
   ],
-
+  "accessWidener": "safesave.classtweaker",
   "depends": {
     "minecraft": "${minecraftVer}",
     "fabricloader": ">=0.4.0",
