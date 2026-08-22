@@ -1,6 +1,5 @@
 package com.carpet.safesave.commands;
 
-import com.carpet.safesave.annotation.CommandRegister;
 import com.carpet.safesave.debug.DebugSwitches;
 import com.carpet.safesave.rules.SafeSaveRules;
 import com.carpet.safesave.safesave.SafeSaveManager;
