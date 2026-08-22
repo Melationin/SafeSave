@@ -33,7 +33,7 @@ public abstract class FallingBlockEntityMixin {
         }
         if(!(output instanceof TagValueOutput tagValueOutput)) return ;
         ValueOutput safe = tagValueOutput.getChild(KEY_SAFE_SAVE);
-        if(safe == null) return;
+        if(safe == null) safe = tagValueOutput.child(KEY_SAFE_SAVE);
         safe.putBoolean("force_tick_after_teleport_to_duplicate", this.forceTickAfterTeleportToDuplicate);
         safe.store("start_pos", BlockPos.CODEC, this.getStartPos());
     }

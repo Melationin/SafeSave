@@ -27,7 +27,7 @@ public abstract class PrimedTntMixin {
         }
         if(!(output instanceof TagValueOutput tagValueOutput)) return ;
         ValueOutput safe = tagValueOutput.getChild(KEY_SAFE_SAVE);
-        if(safe == null) return;
+        if(safe == null) safe = tagValueOutput.child(KEY_SAFE_SAVE);
         safe.putBoolean("used_portal", this.usedPortal);
     }
 
