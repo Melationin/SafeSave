@@ -1,6 +1,8 @@
 package com.carpet.safesave.mixin.entity;
 
 import com.carpet.safesave.safesave.SafeSaveManager;
+import com.carpet.safesave.safesave.entity.EntityOrderHolder;
+import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Pose;
@@ -21,8 +23,22 @@ import static com.carpet.safesave.util.Util.KEY_SAFE_SAVE;
 
 
 @Mixin(Entity.class)
-public abstract class EntityMixin
+public abstract class EntityMixin implements EntityOrderHolder
 {
+
+    /** 实体 tick 序号；未知（本会话新生成）时为 {@link Long#MIN_VALUE}。 */
+    @Unique
+    private long SS$entityOrder = Long.MIN_VALUE;
+
+    @Override
+    public long SS$entityOrder() {
+        return this.SS$entityOrder;
+    }
+
+    @Override
+    public void SS$assignEntityOrder(final long order) {
+        this.SS$entityOrder = order;
+    }
 
     @Shadow
     public int tickCount;
@@ -111,6 +127,7 @@ public abstract class EntityMixin
         this.mainSupportingBlockPos.ifPresent(pos -> finalSafe.store("main_supporting_block_pos", BlockPos.CODEC, pos));
         safe.putBoolean("on_ground_no_blocks", this.onGroundNoBlocks);
         safe.store("pose", Pose.CODEC, this.getPose());
+        safe.putLong("entity_order", this.SS$entityOrder);
 
     }
 
@@ -145,5 +162,10 @@ public abstract class EntityMixin
         safe.read("main_supporting_block_pos", BlockPos.CODEC).ifPresent(pos -> this.mainSupportingBlockPos = Optional.of(pos));
         this.onGroundNoBlocks = safe.getBooleanOr("on_ground_no_blocks", this.onGroundNoBlocks);
         safe.read("pose", Pose.CODEC).ifPresent(this::setPose);
+        long order = safe.getLongOr("entity_order", this.SS$entityOrder);
+        if (order != Long.MIN_VALUE) {
+            this.SS$entityOrder = order;
+            EntityOrderManager.observeOrder(order);
+        }
     }
 }

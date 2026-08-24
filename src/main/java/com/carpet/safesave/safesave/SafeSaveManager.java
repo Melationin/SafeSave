@@ -3,6 +3,7 @@ package com.carpet.safesave.safesave;
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockentity.PistonManager;
+import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import com.carpet.safesave.rules.SafeSaveRules;
 import net.minecraft.nbt.CompoundTag;
@@ -108,6 +109,7 @@ public final class SafeSaveManager {
         ScheduledTickManager.init(store);
         BlockEventManager.init(store);
         PistonManager.reset();
+        EntityOrderManager.reset();
         freezeArmed = true;
         loadedTickCount = 0;
         loadedBlockEventCount = 0;
@@ -242,7 +244,8 @@ public final class SafeSaveManager {
     }
 
     /**
-     * 在 {@code ServerLevel.tick} 的 HEAD 处调用。编排活塞顺序重建与计划刻的首刻恢复扫描。
+     * 在 {@code ServerLevel.tick} 的 HEAD 处调用。编排活塞顺序重建、计划刻的首刻恢复扫描
+     * 与实体 tick 顺序重建。
      */
     public static void onLevelTickStart(final ServerLevel level) {
         if (!enabled() || store == null) {
@@ -250,6 +253,7 @@ public final class SafeSaveManager {
         }
         PistonManager.onLevelTickStart(level);
         ScheduledTickManager.onLevelTickStart(level);
+        EntityOrderManager.onLevelTickStart(level);
     }
 
     // -------------------------------------------------------------- 保存路径

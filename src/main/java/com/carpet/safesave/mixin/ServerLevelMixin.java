@@ -1,10 +1,13 @@
 package com.carpet.safesave.mixin;
 
 import com.carpet.safesave.safesave.SafeSaveManager;
+import com.carpet.safesave.safesave.entity.ServerLevelTickListAccess;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.entity.EntityTickList;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -15,7 +18,12 @@ import java.util.function.BooleanSupplier;
  * 世界刻调试输出、方块事件调试输出，以及 safe-save 的区块卸载快照。
  */
 @Mixin(ServerLevel.class)
-public abstract class ServerLevelMixin {
+public abstract class ServerLevelMixin implements ServerLevelTickListAccess {
+
+    /** 暴露 private 的 {@code entityTickList} 字段供实体顺序管理访问。 */
+    @Accessor("entityTickList")
+    @Override
+    public abstract EntityTickList SS$getEntityTickList();
 
     /**
      * {@code ServerLevel.tick} 的 HEAD：输出请求的“打印世界刻”通道，外加每维度的一次性恢复扫描。
