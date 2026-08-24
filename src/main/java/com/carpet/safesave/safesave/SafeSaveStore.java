@@ -166,55 +166,55 @@ public final class SafeSaveStore {
 
     // ------------------------------------------------------------------- NBT
 
-    public CompoundTag save() {
+    /**
+     * 序列化单个维度的数据，作为该维度独立的存档文件
+     * （根节点仍含 {@code version}/{@code debug}/{@code levels}，但 {@code levels} 只有这一个维度）。
+     */
+    public CompoundTag saveDimension(final String dimensionId, final DimensionData data) {
         CompoundTag root = new CompoundTag();
         root.putInt(KEY_VERSION, FORMAT_VERSION);
 
         CompoundTag debug = new CompoundTag();
         debug.putInt(KEY_DEBUG_SERVER_TICK, this.serverTickCount);
 
-        ListTag levels = new ListTag();
-        for (Map.Entry<String, DimensionData> entry : this.dimensions.entrySet()) {
-            DimensionData data = entry.getValue();
-            CompoundTag levelTag = new CompoundTag();
-            levelTag.putString(KEY_DIMENSION, entry.getKey());
-            levelTag.putLong(KEY_SUB_TICK_COUNT, data.subTickCount);
-            if (data.gameTime != Long.MIN_VALUE) {
-                // 仅调试用
-                levelTag.putLong(KEY_DEBUG_GAME_TIME, data.gameTime);
-            }
-
-            ListTag chunks = new ListTag();
-            for (Map.Entry<Long, ChunkSnapshot> chunkEntry : data.chunks.entrySet()) {
-                ChunkSnapshot snapshot = chunkEntry.getValue();
-                if (snapshot.isEmpty()) {
-                    continue;
-                }
-                ChunkPos pos = ChunkPos.unpack(chunkEntry.getKey());
-                CompoundTag chunkTag = new CompoundTag();
-                chunkTag.putInt(KEY_CHUNK_X, pos.x());
-                chunkTag.putInt(KEY_CHUNK_Z, pos.z());
-                if (!snapshot.blockTicks().isEmpty()) {
-                    chunkTag.put(KEY_BLOCK_TICKS, saveTicks(snapshot.blockTicks()));
-                }
-                if (!snapshot.fluidTicks().isEmpty()) {
-                    chunkTag.put(KEY_FLUID_TICKS, saveTicks(snapshot.fluidTicks()));
-                }
-                chunks.add(chunkTag);
-            }
-            levelTag.put(KEY_CHUNKS, chunks);
-
-            if (!data.blockEvents.isEmpty()) {
-                ListTag events = new ListTag();
-                for (SafeBlockEvent event : data.blockEvents) {
-                    events.add(event.save());
-                }
-                levelTag.put(KEY_BLOCK_EVENTS, events);
-            }
-
-            levels.add(levelTag);
+        CompoundTag levelTag = new CompoundTag();
+        levelTag.putString(KEY_DIMENSION, dimensionId);
+        levelTag.putLong(KEY_SUB_TICK_COUNT, data.subTickCount);
+        if (data.gameTime != Long.MIN_VALUE) {
+            // 仅调试用
+            levelTag.putLong(KEY_DEBUG_GAME_TIME, data.gameTime);
         }
 
+        ListTag chunks = new ListTag();
+        for (Map.Entry<Long, ChunkSnapshot> chunkEntry : data.chunks.entrySet()) {
+            ChunkSnapshot snapshot = chunkEntry.getValue();
+            if (snapshot.isEmpty()) {
+                continue;
+            }
+            ChunkPos pos = ChunkPos.unpack(chunkEntry.getKey());
+            CompoundTag chunkTag = new CompoundTag();
+            chunkTag.putInt(KEY_CHUNK_X, pos.x());
+            chunkTag.putInt(KEY_CHUNK_Z, pos.z());
+            if (!snapshot.blockTicks().isEmpty()) {
+                chunkTag.put(KEY_BLOCK_TICKS, saveTicks(snapshot.blockTicks()));
+            }
+            if (!snapshot.fluidTicks().isEmpty()) {
+                chunkTag.put(KEY_FLUID_TICKS, saveTicks(snapshot.fluidTicks()));
+            }
+            chunks.add(chunkTag);
+        }
+        levelTag.put(KEY_CHUNKS, chunks);
+
+        if (!data.blockEvents.isEmpty()) {
+            ListTag events = new ListTag();
+            for (SafeBlockEvent event : data.blockEvents) {
+                events.add(event.save());
+            }
+            levelTag.put(KEY_BLOCK_EVENTS, events);
+        }
+
+        ListTag levels = new ListTag();
+        levels.add(levelTag);
         root.put(KEY_DEBUG, debug);
         root.put(KEY_LEVELS, levels);
         return root;

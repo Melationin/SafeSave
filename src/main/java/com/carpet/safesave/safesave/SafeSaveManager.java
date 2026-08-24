@@ -22,6 +22,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.TickingBlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.ticks.ScheduledTick;
@@ -38,6 +39,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * 计划刻（scheduled tick）的“安全保存”。
@@ -72,7 +74,6 @@ public final class SafeSaveManager {
 
     /** 绝对时间存储；服务端加载前为 {@code null}。 */
     private static SafeSaveStore store;
-    private static Path filePath;
 
     /** 在一次性“首刻前冻结”被处理之前为 {@code true}。 */
     private static boolean freezeArmed;
@@ -208,7 +209,6 @@ public final class SafeSaveManager {
      */
     public static void onServerLoaded(final MinecraftServer server) {
         store = new SafeSaveStore();
-        filePath = server.getWorldPath(LevelResource.ROOT).resolve(FILE_NAME);
         freezeArmed = true;
         firstTickDone.clear();
         loadedTickCount = 0;
@@ -225,33 +225,83 @@ public final class SafeSaveManager {
             return;
         }
 
-        // 优先使用当前文件名；回退到改名前的文件名，以免现有存档被悄然重置。
-        // 写入始终使用 FILE_NAME，因此第一次保存即完成存档迁移。
-        Path source = filePath;
-        if (!Files.isRegularFile(source)) {
-            Path legacy = server.getWorldPath(LevelResource.ROOT).resolve(LEGACY_FILE_NAME);
-            if (Files.isRegularFile(legacy)) {
-                source = legacy;
-                DebugLog.info("reading legacy {}; it will be migrated to {} on the next save",
-                        LEGACY_FILE_NAME, FILE_NAME);
+        Path root = server.getWorldPath(LevelResource.ROOT);
+
+        // 每个维度一个存档文件，位于 <维度目录>/data/safesave.dat。
+        // 维度目录结构：<world>/dimensions/<namespace>/<path>/，扫描两层。
+        Path dimensionsDir = root.resolve("dimensions");
+        if (Files.isDirectory(dimensionsDir)) {
+            try (Stream<Path> namespaces = Files.list(dimensionsDir)) {
+                for (Path nsDir : namespaces.filter(Files::isDirectory).toList()) {
+                    try (Stream<Path> dimensionDirs = Files.list(nsDir)) {
+                        for (Path dimDir : dimensionDirs.filter(Files::isDirectory).toList()) {
+                            Path file = dimDir.resolve("data").resolve(FILE_NAME);
+                            if (Files.isRegularFile(file)) {
+                                loadFile(file);
+                            }
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                DebugLog.warn("failed to scan {}: {}", dimensionsDir, e.toString());
             }
         }
-        if (!Files.isRegularFile(source)) {
+
+        // 迁移旧版根目录单文件（改版前所有维度都在 <world>/safesave.dat 里）。
+        // 读取成功后立即删除，后续保存都写入各维度目录。
+        Path legacyRoot = root.resolve(FILE_NAME);
+        if (!Files.isRegularFile(legacyRoot)) {
+            legacyRoot = root.resolve(LEGACY_FILE_NAME);
+        }
+        if (Files.isRegularFile(legacyRoot) && loadFile(legacyRoot)) {
+            try {
+                Files.delete(legacyRoot);
+                DebugLog.info("migrated root-level {} into per-dimension data/ files", legacyRoot.getFileName());
+            } catch (IOException e) {
+                DebugLog.warn("failed to delete migrated {}: {}", legacyRoot.getFileName(), e.toString());
+            }
+        }
+
+        if (store.dimensions().isEmpty()) {
             DebugLog.info("no {} found; this session starts from vanilla chunk ticks", FILE_NAME);
             return;
         }
+        loadedTickCount = store.totalTicks();
+        loadedBlockEventCount = store.totalBlockEvents();
+        DebugLog.info("loaded {} scheduled tick(s) + {} block event(s) across {} dimension(s) "
+                        + "(debug: serverTick={} gameTimes={})",
+                loadedTickCount, loadedBlockEventCount, store.dimensions().size(),
+                store.serverTickCount(), store.debugGameTimes());
+    }
+
+    /** 维度目录的 data/ 子目录（如 <world>/dimensions/minecraft/overworld/data）。 */
+    private static Path dimensionDataDir(final ServerLevel level) {
+        Path root = level.getServer().getWorldPath(LevelResource.ROOT);
+        return DimensionType.getStorageFolder(level.dimension(), root).resolve("data");
+    }
+
+    /**
+     * 读取一个维度存档文件并合并进 {@link #store}。
+     *
+     * @return {@code true} 当文件读取成功且包含维度数据
+     */
+    private static boolean loadFile(final Path file) {
         try {
-            CompoundTag tag = NbtIo.readCompressed(source, NbtAccounter.unlimitedHeap());
-            store = SafeSaveStore.load(tag);
-            loadedTickCount = store.totalTicks();
-            loadedBlockEventCount = store.totalBlockEvents();
-            DebugLog.info("loaded {} scheduled tick(s) + {} block event(s) across {} dimension(s) from {} "
-                            + "(debug: serverTick={} gameTimes={})",
-                    loadedTickCount, loadedBlockEventCount, store.dimensions().size(), source.getFileName(),
-                    store.serverTickCount(), store.debugGameTimes());
+            CompoundTag tag = NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap());
+            SafeSaveStore loaded = SafeSaveStore.load(tag);
+            if (loaded.dimensions().isEmpty()) {
+                DebugLog.warn("{} contains no dimension data - skipped", file.getFileName());
+                return false;
+            }
+            // 文件内 dimension 字段即维度 id；debug 字段取第一个加载到的即可
+            if (store.serverTickCount() < 0) {
+                store.setServerTickCount(loaded.serverTickCount());
+            }
+            store.dimensions().putAll(loaded.dimensions());
+            return true;
         } catch (Exception e) {
-            store = new SafeSaveStore();
-            DebugLog.warn("failed to read {} - falling back to vanilla behaviour: {}", source.getFileName(), e.toString());
+            DebugLog.warn("failed to read {} - skipping it: {}", file.getFileName(), e.toString());
+            return false;
         }
     }
 
@@ -653,7 +703,7 @@ public final class SafeSaveManager {
      * 世界的一部分已经从 {@code LevelTicks.allContainers} 中消失。
      */
     public static void saveAll(final MinecraftServer server) {
-        if (!enabled() || store == null || filePath == null) {
+        if (!enabled() || store == null) {
             return;
         }
         int chunks = 0;
@@ -663,11 +713,21 @@ public final class SafeSaveManager {
             data.subTickCount = level.subTickCount;
             data.gameTime = level.getGameTime(); // 仅调试用
             snapshotBlockEvents(level, data);
+            Path file = dimensionDataDir(level).resolve(FILE_NAME);
+            if (data.totalTicks() == 0 && data.blockEvents.isEmpty()) {
+                // 维度变空：删除旧文件，否则下次启动会读到已执行过的旧刻并重复恢复
+                try {
+                    Files.deleteIfExists(file);
+                } catch (IOException e) {
+                    DebugLog.warn("failed to delete stale {}: {}", file.getFileName(), e.toString());
+                }
+                continue;
+            }
+            write(file, store.saveDimension(dimensionId(level), data));
         }
         store.setServerTickCount(server.getTickCount()); // 仅调试用
-        write();
-        DebugLog.info("saved {} scheduled tick(s) over {} loaded chunk(s) + {} block event(s) to {}",
-                store.totalTicks(), chunks, store.totalBlockEvents(), FILE_NAME);
+        DebugLog.info("saved {} scheduled tick(s) over {} loaded chunk(s) + {} block event(s) to per-dimension data/ files",
+                store.totalTicks(), chunks, store.totalBlockEvents());
     }
 
     /**
@@ -721,18 +781,19 @@ public final class SafeSaveManager {
         return count;
     }
 
-    private static void write() {
-        Path tmp = filePath.resolveSibling(FILE_NAME + ".tmp");
+    /** 原子写入：先写临时文件再移动，崩溃不会留下半截文件。 */
+    private static void write(final Path file, final CompoundTag tag) {
+        Path tmp = file.resolveSibling(FILE_NAME + ".tmp");
         try {
-            Files.createDirectories(filePath.getParent());
-            NbtIo.writeCompressed(store.save(), tmp);
+            Files.createDirectories(file.getParent());
+            NbtIo.writeCompressed(tag, tmp);
             try {
-                Files.move(tmp, filePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (IOException atomicFailed) {
-                Files.move(tmp, filePath, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
-            DebugLog.warn("failed to write {}: {}", FILE_NAME, e.toString());
+            DebugLog.warn("failed to write {}: {}", file.getFileName(), e.toString());
         }
     }
 }
