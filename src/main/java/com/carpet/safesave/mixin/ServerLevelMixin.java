@@ -1,17 +1,13 @@
 package com.carpet.safesave.mixin;
 
 import com.carpet.safesave.safesave.SafeSaveManager;
-import com.carpet.safesave.safesave.scheduledtick.ScheduledTickManager;
-import net.minecraft.core.BlockPos;
+import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.BlockEventData;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.function.BooleanSupplier;
 

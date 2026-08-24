@@ -3,7 +3,7 @@ package com.carpet.safesave.safesave;
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockentity.PistonManager;
-import com.carpet.safesave.safesave.scheduledtick.ScheduledTickManager;
+import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import com.carpet.safesave.rules.SafeSaveRules;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
@@ -37,8 +37,6 @@ import java.util.stream.Stream;
 public final class SafeSaveManager {
 
     private static final String FILE_NAME = "safesave.dat";
-    /** 模组改名为 SafeSave 之前使用的文件名；仍可读取用于迁移。 */
-    private static final String LEGACY_FILE_NAME = "carpet-example-safesave.dat";
 
     /** 绝对时间存储；服务端加载前为 {@code null}。 */
     private static SafeSaveStore store;
@@ -138,21 +136,6 @@ public final class SafeSaveManager {
                 }
             } catch (IOException e) {
                 DebugLog.warn("failed to scan {}: {}", dimensionsDir, e.toString());
-            }
-        }
-
-        // 迁移旧版根目录单文件（改版前所有维度都在 <world>/safesave.dat 里）。
-        // 读取成功后立即删除，后续保存都写入各维度目录。
-        Path legacyRoot = root.resolve(FILE_NAME);
-        if (!Files.isRegularFile(legacyRoot)) {
-            legacyRoot = root.resolve(LEGACY_FILE_NAME);
-        }
-        if (Files.isRegularFile(legacyRoot) && loadFile(legacyRoot)) {
-            try {
-                Files.delete(legacyRoot);
-                DebugLog.info("migrated root-level {} into per-dimension data/ files", legacyRoot.getFileName());
-            } catch (IOException e) {
-                DebugLog.warn("failed to delete migrated {}: {}", legacyRoot.getFileName(), e.toString());
             }
         }
 

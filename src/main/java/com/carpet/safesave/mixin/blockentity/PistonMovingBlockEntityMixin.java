@@ -1,4 +1,4 @@
-package com.carpet.safesave.mixin.entityBlock;
+package com.carpet.safesave.mixin.blockentity;
 
 import com.carpet.safesave.safesave.blockentity.PistonManager;
 import com.carpet.safesave.safesave.blockentity.PistonOrderHolder;

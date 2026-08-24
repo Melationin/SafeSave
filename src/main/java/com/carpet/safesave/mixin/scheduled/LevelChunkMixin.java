@@ -1,7 +1,7 @@
-package com.carpet.safesave.mixin;
+package com.carpet.safesave.mixin.scheduled;
 
-import com.carpet.safesave.safesave.scheduledtick.SafeTickContainer;
-import com.carpet.safesave.safesave.scheduledtick.ScheduledTickManager;
+import com.carpet.safesave.safesave.scheduled.SafeTickContainer;
+import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;

@@ -1,24 +1,13 @@
-package com.carpet.safesave.mixin;
+package com.carpet.safesave.mixin.scheduled;
 
 
-import com.carpet.safesave.safesave.scheduledtick.TickContainerHolder;
+import com.carpet.safesave.safesave.scheduled.TickContainerHolder;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import net.minecraft.core.BlockPos;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.ticks.LevelChunkTicks;
 import net.minecraft.world.ticks.LevelTicks;
-import net.minecraft.world.ticks.ScheduledTick;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-
-import java.util.List;
-import java.util.function.BiConsumer;
 
 /**
  * 世界级计划刻索引的调试插桩 + 容器访问。

@@ -1,6 +1,6 @@
 package com.carpet.safesave.safesave;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
-import com.carpet.safesave.safesave.scheduledtick.SafeTick;
+import com.carpet.safesave.safesave.scheduled.SafeTick;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
