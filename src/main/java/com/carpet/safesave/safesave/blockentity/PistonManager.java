@@ -1,6 +1,7 @@
 package com.carpet.safesave.safesave.blockentity;
 
 import com.carpet.safesave.debug.DebugLog;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -88,10 +89,16 @@ public final class PistonManager {
         // BlockEntityType/BlockEntityTypes 类改名问题。）
         for (int i = 0; i < tickers.size(); i++) {
             TickingBlockEntity ticker = tickers.get(i);
-            if (ticker.isRemoved() || !level.getBlockState(ticker.getPos()).is(Blocks.MOVING_PISTON)) {
+            if (ticker.isRemoved()) {
                 continue;
             }
-            BlockEntity blockEntity = level.getBlockEntity(ticker.getPos());
+            BlockPos pos = ticker.getPos();
+            // 锂的 sleeping 机制会把部分 ticker 的 pos 置 null（用于跳过 tick）——
+            // 锂自己的 dumpBlockEntityTickers 也有同样的防御。直接跳过这些 ticker。
+            if (pos == null || !level.getBlockState(pos).is(Blocks.MOVING_PISTON)) {
+                continue;
+            }
+            BlockEntity blockEntity = level.getBlockEntity(pos);
             if (blockEntity instanceof PistonOrderHolder holder && holder.SS$pistonOrder() != Long.MIN_VALUE) {
                 slots.add(i);
                 pistons.add(ticker);

@@ -306,8 +306,15 @@ public final class ScheduledTickManager {
             return;
         }
 
-        List<SafeTick> block = toSafeTicks(blockContainer.SS$snapshotQueue());
-        List<SafeTick> fluid = toSafeTicks(fluidContainer.SS$snapshotQueue());
+        // 容器不可读（如与第三方刻调度重写冲突）时返回 null：跳过该区块，保留存储中的旧条目，
+        // 而不是以空快照覆盖——那会悄悄删除已保存的刻。
+        List<?> blockQueue = blockContainer.SS$snapshotQueue();
+        List<?> fluidQueue = fluidContainer.SS$snapshotQueue();
+        if (blockQueue == null || fluidQueue == null) {
+            return;
+        }
+        List<SafeTick> block = toSafeTicks(blockQueue);
+        List<SafeTick> fluid = toSafeTicks(fluidQueue);
         store.put(dimensionId(level), packedChunkPos, new SafeSaveStore.ChunkSnapshot(block, fluid));
     }
 
