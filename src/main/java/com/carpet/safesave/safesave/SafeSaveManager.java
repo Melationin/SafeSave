@@ -88,10 +88,6 @@ public final class SafeSaveManager {
     private static final java.util.concurrent.atomic.AtomicLong pistonOrderGeneration =
             new java.util.concurrent.atomic.AtomicLong();
     private static final Map<String, Long> pistonOrderRebuiltAt = new HashMap<>();
-    /** 活塞就绪等待开始时的服务端刻数；-1 = 未在等待（#3）。 */
-    private static int pistonWaitStartTick = -1;
-    /** 已报告活塞就绪的维度（#3）。 */
-    private static final Set<String> pistonWaitReported = new HashSet<>();
     /** 供 {@code /safesave status} 使用的诊断数据。 */
     private static int loadedTickCount;
     private static int restoredTickCount;
@@ -222,8 +218,6 @@ public final class SafeSaveManager {
         restoredBlockEventCount = 0;
         droppedBlockEventCount = 0;
         staleWarned.clear();
-        pistonWaitStartTick = -1;
-        pistonWaitReported.clear();
         pistonOrderRebuiltAt.clear();
 
         if (!enabled()) {
@@ -351,94 +345,6 @@ public final class SafeSaveManager {
                 dimensionId(level), restored, existing.size());
     }
 
-    // -------------------------------------- 移动活塞所在区块的就绪（#3）
-
-    /** 在放弃之前，等待正在推进中的活塞所需区块的服务端刻数上限。 */
-    private static final int PISTON_WAIT_TIMEOUT_TICKS = 600;
-
-    /**
-     * 活塞一次推进可跨越最多 12 个方块，再加上粘性分支，因此经常跨区块边界——然而
-     * {@code PistonMovingBlockEntity} 的刻是<em>按区块</em>门控的（{@code LevelChunk.isTicking}）。
-     * 加载时区块是错落出现的，所以一次推进的两半会在不同的刻完成；由于完成阶段会运行
-     * {@code updateFromNeighbourShapes} 和 {@code neighborChanged}，先完成的一半会在结构其余部分仍是
-     * {@code MOVING_PISTON} 的世界中结算，粘液/蜂蜜结构可能因此被撕成两半。
-     *
-     * <p>当记录中持有移动活塞的每个区块都真正可刻时，此方法报告一次（并可选地解除冻结），
-     * 使整个推进在同一个刻恢复。
-     *
-     * <p>刻意<strong>不</strong>添加区块票（chunk ticket）：强制加载玩家从未要求的区块会改变世界行为。
-     * 因此模拟距离之外的区块永远不会变为可刻——原版也是如此，所以永远等下去是错误的。由此需要超时。
-     */
-    private static void checkPistonChunksReady(final ServerLevel level) {
-        String dimension = dimensionId(level);
-        SafeSaveStore.DimensionData data = store.dimensionOrNull(dimension);
-        if (data == null || data.pistonChunksAwaitingTicking.isEmpty()) {
-            return;
-        }
-        if (pistonWaitStartTick < 0) {
-            pistonWaitStartTick = level.getServer().getTickCount();
-        }
-
-        data.pistonChunksAwaitingTicking.removeIf(level::isPositionTickingWithEntitiesLoaded);
-
-        if (data.pistonChunksAwaitingTicking.isEmpty()) {
-            if (pistonWaitReported.add(dimension)) {
-                DebugLog.info("{}: all {} chunk(s) holding a moving piston are now block-ticking - "
-                                + "the whole push will resume on one tick. Safe to '/tick unfreeze'.",
-                        dimension, data.pistonChunks.size());
-            }
-            return;
-        }
-
-        int waited = level.getServer().getTickCount() - pistonWaitStartTick;
-        if (waited > PISTON_WAIT_TIMEOUT_TICKS && pistonWaitReported.add(dimension)) {
-            DebugLog.warn("{}: gave up after {} server ticks waiting for {} chunk(s) holding a moving piston "
-                            + "to become block-ticking: {}. They are most likely outside the simulation "
-                            + "distance (vanilla would not tick them either); that push will resume in pieces.",
-                    dimension, waited, data.pistonChunksAwaitingTicking.size(),
-                    describeChunks(data.pistonChunksAwaitingTicking));
-        }
-    }
-
-    private static String describeChunks(final Set<Long> packed) {
-        StringBuilder sb = new StringBuilder();
-        int shown = 0;
-        for (Long key : packed) {
-            if (shown++ == 8) {
-                sb.append(", ...");
-                break;
-            }
-            if (shown > 1) {
-                sb.append(", ");
-            }
-            sb.append(ChunkPos.unpack(key));
-        }
-        return sb.toString();
-    }
-
-    /** 当此区块当前持有至少一个 {@code PistonMovingBlockEntity} 时为 {@code true}。 */
-    private static boolean hasMovingPiston(final LevelChunk chunk) {
-        for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
-            if (blockEntity instanceof PistonOrderHolder) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** 为单个区块保持 {@link SafeSaveStore.DimensionData#pistonChunks} 同步。 */
-    private static void recordPistonChunk(final ServerLevel level, final LevelChunk chunk) {
-        SafeSaveStore.DimensionData data = store.dimension(dimensionId(level));
-        long key = chunk.getPos().pack();
-        if (hasMovingPiston(chunk)) {
-            data.pistonChunks.add(key);
-        } else {
-            data.pistonChunks.remove(key);
-        }
-    }
-
-
-
     /**
      * 在 {@code MinecraftServer.tickServer} 的 HEAD 处调用一次。
      *
@@ -483,7 +389,6 @@ public final class SafeSaveManager {
             pistonOrderRebuiltAt.put(dimension, generation);
             rebuildPistonTickOrder(level);
         }
-        checkPistonChunksReady(level);
 
         if (!firstTickDone.add(dimension)) {
             return;
@@ -680,7 +585,6 @@ public final class SafeSaveManager {
         // ImposterProtoChunk 在写入被禁用时会返回 BlackholeTickAccess.emptyContainer()，
         // 它没有实现 SafeTickContainer，盲目强转会抛出 ClassCastException。
         // snapshotLevel() 已经这样防护；这条路径之前没有。
-        recordPistonChunk(level, chunk);
         if (!(chunk.getBlockTicks() instanceof SafeTickContainer)
                 || !(chunk.getFluidTicks() instanceof SafeTickContainer)) {
             return;
@@ -812,10 +716,6 @@ public final class SafeSaveManager {
             @SuppressWarnings("unchecked")
             TickContainerAccess<Fluid> fluidAccess = (TickContainerAccess<Fluid>) fluid;
             snapshot(level, key, blockAccess, fluidAccess);
-            LevelChunk loaded = level.getChunkSource().getChunkNow(ChunkPos.getX(key), ChunkPos.getZ(key));
-            if (loaded != null) {
-                recordPistonChunk(level, loaded);
-            }
             count++;
         }
         return count;

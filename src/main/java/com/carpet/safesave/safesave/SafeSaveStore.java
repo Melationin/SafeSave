@@ -49,8 +49,6 @@ public final class SafeSaveStore {
     private static final String KEY_FLUID_TICKS = "fluid";
     /** 待处理方块事件的有序队列（v2+） */
     private static final String KEY_BLOCK_EVENTS = "block_events";
-    /** 保存时持有 PistonMovingBlockEntity 的打包区块坐标（v3+） */
-    private static final String KEY_PISTON_CHUNKS = "piston_chunks";
 
     /** 每区块的绝对刻列表。列表按取出顺序存储，纯粹为了可读性。 */
     public record ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks) {
@@ -77,14 +75,6 @@ public final class SafeSaveStore {
         public final Set<Long> pendingRestore = new LinkedHashSet<>();
         /** 当 {@link #blockEvents} 仍持有未应用的磁盘数据时为 {@code true}。 */
         public boolean blockEventsPendingRestore;
-        /**
-         * 上次观察时持有 {@code PistonMovingBlockEntity} 的打包区块坐标。
-         * 记录下来是为了在加载时，于任何这些区块<em>被加载之前</em>就知道一次进行中的推进跨越了哪些区块——
-         * 这个集合无法通过扫描发现，因为区块尚未在内存中（#3）。
-         */
-        public final Set<Long> pistonChunks = new LinkedHashSet<>();
-        /** 从磁盘读入且尚未确认可刻的 {@link #pistonChunks} 子集。瞬态。 */
-        public final Set<Long> pistonChunksAwaitingTicking = new LinkedHashSet<>();
         /** 保存时的 {@code Level.subTickCount}；{@code -1} = 未知 */
         public long subTickCount = -1L;
         /**
@@ -214,15 +204,6 @@ public final class SafeSaveStore {
             }
             levelTag.put(KEY_CHUNKS, chunks);
 
-            if (!data.pistonChunks.isEmpty()) {
-                long[] packed = new long[data.pistonChunks.size()];
-                int i = 0;
-                for (Long key : data.pistonChunks) {
-                    packed[i++] = key;
-                }
-                levelTag.putLongArray(KEY_PISTON_CHUNKS, packed);
-            }
-
             if (!data.blockEvents.isEmpty()) {
                 ListTag events = new ListTag();
                 for (SafeBlockEvent event : data.blockEvents) {
@@ -269,13 +250,6 @@ public final class SafeSaveStore {
                 DimensionData data = store.dimension(dimensionId);
                 data.subTickCount = levelTag.getLongOr(KEY_SUB_TICK_COUNT, -1L);
                 data.gameTime = levelTag.getLongOr(KEY_DEBUG_GAME_TIME, Long.MIN_VALUE);
-
-                levelTag.getLongArray(KEY_PISTON_CHUNKS).ifPresent(packed -> {
-                    for (long key : packed) {
-                        data.pistonChunks.add(key);
-                        data.pistonChunksAwaitingTicking.add(key);
-                    }
-                });
 
                 ListTag events = levelTag.getListOrEmpty(KEY_BLOCK_EVENTS);
                 for (int e = 0; e < events.size(); e++) {
