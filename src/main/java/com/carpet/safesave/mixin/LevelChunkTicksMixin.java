@@ -1,7 +1,7 @@
 package com.carpet.safesave.mixin;
 
 import com.carpet.safesave.debug.DebugLog;
-import com.carpet.safesave.safesave.SafeTickContainer;
+import com.carpet.safesave.safesave.scheduledtick.SafeTickContainer;
 import net.minecraft.world.ticks.LevelChunkTicks;
 import net.minecraft.world.ticks.SavedTick;
 import net.minecraft.world.ticks.ScheduledTick;

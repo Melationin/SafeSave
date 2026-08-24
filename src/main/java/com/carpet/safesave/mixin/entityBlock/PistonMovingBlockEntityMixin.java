@@ -1,6 +1,7 @@
 package com.carpet.safesave.mixin.entityBlock;
 
-import com.carpet.safesave.safesave.PistonOrderHolder;
+import com.carpet.safesave.safesave.blockentity.PistonManager;
+import com.carpet.safesave.safesave.blockentity.PistonOrderHolder;
 import com.carpet.safesave.safesave.SafeSaveManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -60,7 +61,7 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
                                            final boolean extending,
                                            final boolean isSourcePiston,
                                            final CallbackInfo ci) {
-        this.SS$order = SafeSaveManager.nextPistonOrder();
+        this.SS$order = PistonManager.nextPistonOrder();
     }
 
     @Inject(method = "saveAdditional", at = @At("TAIL"))
@@ -94,7 +95,7 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
             if (order != Long.MIN_VALUE) {
                 this.SS$order = order;
 
-                SafeSaveManager.observePistonOrder(order);
+                PistonManager.observePistonOrder(order);
             }
         }else {
 
@@ -109,10 +110,10 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
             long order = input.getLongOr(KEY_ORDER, Long.MIN_VALUE);
             if (order != Long.MIN_VALUE) {
                 this.SS$order = order;
-                SafeSaveManager.observePistonOrder(order);
+                PistonManager.observePistonOrder(order);
             }
         }
 
-        SafeSaveManager.markPistonTickOrderDirty();
+        PistonManager.markPistonTickOrderDirty();
     }
 }

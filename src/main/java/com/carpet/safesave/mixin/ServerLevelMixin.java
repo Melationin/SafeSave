@@ -1,6 +1,7 @@
 package com.carpet.safesave.mixin;
 
 import com.carpet.safesave.safesave.SafeSaveManager;
+import com.carpet.safesave.safesave.scheduledtick.ScheduledTickManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.BlockEventData;
@@ -36,6 +37,6 @@ public abstract class ServerLevelMixin {
      */
     @Inject(method = "unload", at = @At("HEAD"))
     private void SS$onChunkUnload(final LevelChunk levelChunk, final CallbackInfo ci) {
-        SafeSaveManager.snapshotChunk((ServerLevel) (Object) this, levelChunk);
+        ScheduledTickManager.snapshotChunk((ServerLevel) (Object) this, levelChunk);
     }
 }

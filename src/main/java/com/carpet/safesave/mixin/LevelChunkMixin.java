@@ -1,7 +1,7 @@
 package com.carpet.safesave.mixin;
 
-import com.carpet.safesave.safesave.SafeSaveManager;
-import com.carpet.safesave.safesave.SafeTickContainer;
+import com.carpet.safesave.safesave.scheduledtick.SafeTickContainer;
+import com.carpet.safesave.safesave.scheduledtick.ScheduledTickManager;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -36,7 +36,7 @@ public abstract class LevelChunkMixin {
     @Inject(method = "unpackTicks", at = @At("HEAD"))
     private void SS$capturePreUnpackTicks(final long currentTick, final CallbackInfo ci) {
         LevelChunk self = (LevelChunk) (Object) this;
-        if (!SafeSaveManager.hasPendingRestore(self)) {
+        if (!ScheduledTickManager.hasPendingRestore(self)) {
             return;
         }
         this.SS$preUnpackBlockTicks =
@@ -47,7 +47,7 @@ public abstract class LevelChunkMixin {
 
     @Inject(method = "unpackTicks", at = @At("TAIL"))
     private void SS$restoreAbsoluteTicks(final long currentTick, final CallbackInfo ci) {
-        SafeSaveManager.restoreChunk((LevelChunk) (Object) this,
+        ScheduledTickManager.restoreChunk((LevelChunk) (Object) this,
                 this.SS$preUnpackBlockTicks,
                 this.SS$preUnpackFluidTicks);
         this.SS$preUnpackBlockTicks = null;

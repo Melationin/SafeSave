@@ -1,7 +1,7 @@
 package com.carpet.safesave.mixin;
 
 
-import com.carpet.safesave.safesave.TickContainerHolder;
+import com.carpet.safesave.safesave.scheduledtick.TickContainerHolder;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
