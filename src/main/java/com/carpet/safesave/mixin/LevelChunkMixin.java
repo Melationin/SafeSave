@@ -12,19 +12,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.List;
 
 /**
- * Overrides vanilla's tick re-anchoring.
+ * 覆盖原版的刻重新锚定。
  *
- * <p>{@code unpackTicks(currentTick)} turns each saved {@code SavedTick} into
- * {@code ScheduledTick(triggerTick = currentTick + delay, subTickOrder = -N..-1)} — the exact point at
- * which the absolute trigger time and the global ordering are lost.
+ * <p>{@code unpackTicks(currentTick)} 把每个保存的 {@code SavedTick} 变成
+ * {@code ScheduledTick(triggerTick = currentTick + delay, subTickOrder = -N..-1)}——绝对触发时间和
+ * 全局顺序正是在这里丢失的。
  *
- * <p>HEAD captures whatever is <em>already</em> queued. At that moment {@code pendingTicks} has not
- * been merged yet, so anything present can only be a tick scheduled during this session while the
- * chunk sat at {@code FULL} without block-ticking (e.g. an observer across a chunk border). Those are
- * re-added after the restore, so this feature is never worse than vanilla.
+ * <p>HEAD 捕获<em>已经</em>排队的任何内容。那一刻 {@code pendingTicks} 尚未合并，
+ * 因此已存在的只能是本会话期间、区块处于 {@code FULL} 但尚未方块刻时调度的刻
+ * （例如跨区块边界的侦测器）。这些会在恢复之后重新加入，因此本功能绝不会比原版更差。
  *
- * <p>TAIL lets vanilla finish (clearing {@code pendingTicks}) and then replaces the result wholesale
- * with the absolute data safe-save kept.
+ * <p>TAIL 让原版先完成（清空 {@code pendingTicks}），然后整体替换为 safe-save 保存的绝对数据。
  */
 @Mixin(LevelChunk.class)
 public abstract class LevelChunkMixin {

@@ -1,7 +1,6 @@
 package com.carpet.safesave.safesave;
 
 import com.carpet.safesave.debug.DebugLog;
-import com.carpet.safesave.debug.TickOwnerAware;
 import com.carpet.safesave.rules.SafeSaveRules;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongIterator;
@@ -41,66 +40,59 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * "Safe save" for scheduled ticks.
+ * 计划刻（scheduled tick）的“安全保存”。
  *
- * <h2>What vanilla loses on restart</h2>
- * A chunk's ticks are stored as {@code SavedTick(type, pos, int delay, priority)}. On load,
- * {@code LevelChunk.unpackTicks(gameTime)} re-anchors {@code delay} against the game time at which
- * <em>that chunk</em> starts block-ticking, and re-numbers {@code subTickOrder} as {@code -N..-1}
- * <em>per chunk</em>. Consequences:
+ * <h2>原版重启时会丢失什么</h2>
+ * 区块的刻以 {@code SavedTick(type, pos, int delay, priority)} 的形式存储。加载时，
+ * {@code LevelChunk.unpackTicks(gameTime)} 会以 <em>该区块</em> 开始方块刻时的游戏时间重新锚定
+ * {@code delay}，并 <em>按区块</em> 将 {@code subTickOrder} 重新编号为 {@code -N..-1}。由此产生的后果：
  * <ul>
- *   <li>absolute trigger times drift by {@code T_unpack - T_save} for any chunk not loaded at
- *       startup, so cross-chunk phase relationships break;</li>
- *   <li>the global {@code subTickOrder} ordering between chunks is destroyed (mass ties, resolved by
- *       hash-map iteration order);</li>
- *   <li>{@code Level.subTickCount} is not persisted at all;</li>
- *   <li>merely scheduling a tick does not mark the chunk unsaved, so a chunk whose only change was a
- *       scheduled tick is never rewritten and the tick is silently lost.</li>
+ *   <li>任何未在启动时加载的区块，其绝对触发时间都会漂移 {@code T_unpack - T_save}，跨区块的相位关系被破坏；</li>
+ *   <li>区块间全局的 {@code subTickOrder} 顺序被摧毁（大量并列，由哈希表迭代顺序决定）；</li>
+ *   <li>{@code Level.subTickCount} 完全不被持久化；</li>
+ *   <li>仅调度一个刻不会把区块标记为未保存，因此唯一变化只是计划刻的区块永远不会被重写，该刻会悄然丢失。</li>
  * </ul>
  *
- * <h2>What this does</h2>
- * Keeps an authoritative side store of every scheduled tick with <strong>absolute</strong>
- * {@code triggerTick} and the <strong>original global</strong> {@code subTickOrder}, written to
- * {@code <world>/safesave.dat}. It is independent of vanilla's chunk NBT, so it also
- * sidesteps the {@code markUnsaved} loss. On load it overwrites whatever vanilla re-anchored.
+ * <h2>本模组做什么</h2>
+ * 为每个计划刻维护一个权威的旁置存储，记录 <strong>绝对</strong> 的 {@code triggerTick} 与
+ * <strong>原始全局</strong> 的 {@code subTickOrder}，写入 {@code <world>/safesave.dat}。
+ * 它独立于原版的区块 NBT，因此也绕开了 {@code markUnsaved} 丢失的问题。加载时它会覆盖原版重新锚定的结果。
  *
- * <p>The store is refreshed for a chunk when (a) that chunk unloads, or (b) a world save happens
- * while it is loaded. Because trigger times are absolute, an entry for a long-unloaded chunk stays
- * valid indefinitely — nothing drifts.
+ * <p>当 (a) 区块卸载，或 (b) 区块加载期间发生世界保存时，存储会为该区块刷新。由于触发时间是绝对的，
+ * 一个长期未加载的区块的条目始终有效——不会发生漂移。
  *
- * <p>{@code serverTickCount} and per-level {@code gameTime} are also written, but purely for
- * diagnostics: the restore path below never reads them.
+ * <p>{@code serverTickCount} 与每个世界的 {@code gameTime} 也会写入，但纯粹用于诊断：
+ * 下方的恢复路径从不读取它们。
  */
 public final class SafeSaveManager {
 
     private static final String FILE_NAME = "safesave.dat";
-    /** Name used before the mod was renamed to SafeSave; still readable. */
+    /** 模组改名为 SafeSave 之前使用的文件名；仍可读取。 */
     private static final String LEGACY_FILE_NAME = "carpet-example-safesave.dat";
 
-    /** Absolute-timing store; {@code null} until a server is loaded. */
+    /** 绝对时间存储；服务端加载前为 {@code null}。 */
     private static SafeSaveStore store;
     private static Path filePath;
 
-    /** {@code true} until the one-shot pre-first-tick freeze has been considered. */
+    /** 在一次性“首刻前冻结”被处理之前为 {@code true}。 */
     private static boolean freezeArmed;
-    /** Dimensions whose one-shot first-world-tick restore has already run. */
+    /** 已执行过一次性首个世界刻恢复的维度。 */
     private static final Set<String> firstTickDone = new HashSet<>();
-    /** Monotonic creation counter handed to each new PistonMovingBlockEntity (#4). */
+    /** 分配给每个新创建的 PistonMovingBlockEntity 的单调递增创建计数器（#4）。 */
     private static final java.util.concurrent.atomic.AtomicLong pistonOrder = new java.util.concurrent.atomic.AtomicLong();
     /**
-     * Bumped whenever a moving piston is loaded from NBT, so its ticker slot ordering must be rebuilt
-     * (#4). A generation counter rather than a boolean because {@code loadAdditional} runs before the
-     * block entity has a level, so the dimension is unknown at that point - each level instead
-     * remembers the generation it last rebuilt at.
+     * 每当一个移动中的活塞从 NBT 加载时递增，因为其刻循环器（ticker）槽位顺序需要重建（#4）。
+     * 之所以用代数计数器而不是布尔值，是因为 {@code loadAdditional} 在方块实体获得所属世界之前运行，
+     * 此时维度未知——因此改为由每个世界记住自己上次重建时的代数。
      */
     private static final java.util.concurrent.atomic.AtomicLong pistonOrderGeneration =
             new java.util.concurrent.atomic.AtomicLong();
     private static final Map<String, Long> pistonOrderRebuiltAt = new HashMap<>();
-    /** Server tick at which the piston-readiness wait started; -1 = not waiting (#3). */
+    /** 活塞就绪等待开始时的服务端刻数；-1 = 未在等待（#3）。 */
     private static int pistonWaitStartTick = -1;
-    /** Dimensions that already reported piston readiness (#3). */
+    /** 已报告活塞就绪的维度（#3）。 */
     private static final Set<String> pistonWaitReported = new HashSet<>();
-    /** Diagnostics for {@code /safesave status}. */
+    /** 供 {@code /safesave status} 使用的诊断数据。 */
     private static int loadedTickCount;
     private static int restoredTickCount;
     private static int droppedTickCount;
@@ -115,14 +107,14 @@ public final class SafeSaveManager {
         return SafeSaveRules.safeSave;
     }
 
-    // ------------------------------------------------- moving piston order (#4)
+    // ------------------------------------------------- 移动中的活塞顺序（#4）
 
-    /** @return the next creation sequence number for a freshly built moving piston */
+    /** @return 新构建的移动活塞的下一个创建序号 */
     public static long nextPistonOrder() {
         return pistonOrder.getAndIncrement();
     }
 
-    /** Keeps newly created pistons strictly after every order value restored from disk. */
+    /** 确保新创建的活塞严格排在所有从磁盘恢复的顺序值之后。 */
     public static void observePistonOrder(final long restored) {
         pistonOrder.accumulateAndGet(restored + 1L, Math::max);
     }
@@ -132,27 +124,24 @@ public final class SafeSaveManager {
     }
 
     /**
-     * Restores the original relative tick order of moving pistons within
-     * {@code Level.blockEntityTickers}.
+     * 恢复 {@code Level.blockEntityTickers} 中移动活塞之间的原始相对刻顺序。
      *
-     * <p>Only the slots currently occupied by moving pistons are rewritten, in ascending creation
-     * order; every other ticker keeps its exact index. That fixes piston-vs-piston ordering without
-     * perturbing anything else, which matters because two adjacent pistons finalising in the same
-     * tick each run {@code updateFromNeighbourShapes} and so observe each other's result.
+     * <p>只按创建顺序升序重写当前被移动活塞占据的槽位；其余刻循环器保持原索引不变。
+     * 这样可以修复活塞之间的顺序而不扰动其他任何东西，这一点很重要，因为同一刻内完成推动的两个相邻活塞
+     * 各自都会运行 {@code updateFromNeighbourShapes}，从而观察到对方的结果。
      *
-     * <p>Safe to call from {@code ServerLevel.tick} HEAD: {@code tickingBlockEntities} is false there,
-     * so no iteration is in progress.
+     * <p>在 {@code ServerLevel.tick} 的 HEAD 处调用是安全的：此时 {@code tickingBlockEntities} 为
+     * {@code false}，不会有正在进行的迭代。
      */
     private static void rebuildPistonTickOrder(final ServerLevel level) {
         List<TickingBlockEntity> tickers =level.blockEntityTickers;
         List<Integer> slots = new ArrayList<>();
         List<TickingBlockEntity> pistons = new ArrayList<>();
 
-        // Filter on the block state first: a palette read is cheap and side-effect free, whereas
-        // Level.getBlockEntity uses EntityCreationType.IMMEDIATE and would promote pending block
-        // entities across the whole level, creating them earlier than vanilla does.
-        // (Checking the state rather than the ticker's registered type also avoids the
-        // BlockEntityType/BlockEntityTypes class rename between 26.1 and 26.2.)
+        // 先按方块状态过滤：调色板读取廉价且无副作用，而 Level.getBlockEntity 使用
+        // EntityCreationType.IMMEDIATE，会把整个世界的待创建方块实体提前实例化，比原版更早。
+        // （检查方块状态而不是刻循环器注册的类型，也能避开 26.1 与 26.2 之间的
+        // BlockEntityType/BlockEntityTypes 类改名问题。）
         for (int i = 0; i < tickers.size(); i++) {
             TickingBlockEntity ticker = tickers.get(i);
             if (ticker.isRemoved() || !level.getBlockState(ticker.getPos()).is(Blocks.MOVING_PISTON)) {
@@ -214,12 +203,12 @@ public final class SafeSaveManager {
         return level.dimension().identifier().toString();
     }
 
-    // ------------------------------------------------------------ server hooks
+    // ------------------------------------------------------------ 服务端钩子
 
     /**
-     * Called from Carpet's {@code onServerLoaded}, which fires at {@code MinecraftServer.loadLevel}
-     * HEAD — i.e. before {@code createLevels}/{@code prepareLevels}. That matters: the store must be
-     * populated <em>before</em> the first chunk unpacks its ticks.
+     * 由 Carpet 的 {@code onServerLoaded} 调用，它在 {@code MinecraftServer.loadLevel} 的 HEAD 处触发——
+     * 即在 {@code createLevels}/{@code prepareLevels} 之前。这一点很重要：存储必须在第一个区块解包其刻
+     * 之前就完成填充。
      */
     public static void onServerLoaded(final MinecraftServer server) {
         store = new SafeSaveStore();
@@ -242,8 +231,8 @@ public final class SafeSaveManager {
             return;
         }
 
-        // Prefer the current name; fall back to the pre-rename one so an existing world is not
-        // silently reset. Writes always go to FILE_NAME, so the first save migrates the world.
+        // 优先使用当前文件名；回退到改名前的文件名，以免现有存档被悄然重置。
+        // 写入始终使用 FILE_NAME，因此第一次保存即完成存档迁移。
         Path source = filePath;
         if (!Files.isRegularFile(source)) {
             Path legacy = server.getWorldPath(LevelResource.ROOT).resolve(LEGACY_FILE_NAME);
@@ -273,14 +262,13 @@ public final class SafeSaveManager {
     }
 
     /**
-     * Called from Carpet's {@code onServerClosed}, which fires at {@code MinecraftServer.stopServer}
-     * <em>HEAD</em>.
+     * 由 Carpet 的 {@code onServerClosed} 调用，它在 {@code MinecraftServer.stopServer} 的
+     * <em>HEAD</em> 处触发。
      *
-     * <p>Deliberately does <strong>not</strong> drop the store: the shutdown sequence still has to run
-     * its chunk-unload loop and then {@code saveAllChunks(false, true, false)} further down
-     * {@code stopServer}. Clearing state here would silently skip the single most important save of
-     * the whole feature. All per-session state is re-initialised by {@link #onServerLoaded} instead,
-     * so nothing leaks into a subsequent (singleplayer) world.
+     * <p>刻意<strong>不</strong>丢弃存储：关闭流程仍需执行其区块卸载循环，之后在
+     * {@code stopServer} 更下方还有 {@code saveAllChunks(false, true, false)}。在这里清空状态
+     * 会悄悄跳过整个功能最重要的一次保存。所有会话级状态改由 {@link #onServerLoaded} 重新初始化，
+     * 因此不会有任何残留泄漏到后续的（单人）世界。
      */
     public static void onServerClosed() {
         if (enabled() && store != null) {
@@ -290,17 +278,14 @@ public final class SafeSaveManager {
     }
 
     /**
-     * Called at {@code MinecraftServer.prepareLevels} HEAD: every {@code ServerLevel} exists but no
-     * chunk has been prepared for ticking yet.
+     * 在 {@code MinecraftServer.prepareLevels} 的 HEAD 处调用：此时每个 {@code ServerLevel} 都已存在，
+     * 但还没有任何区块被准备好用于刻。
      *
-     * <p>Binds the debug owner labels and restores {@code Level.subTickCount} here, which is the
-     * earliest point at which both the levels and the store are available. Restoring the counter
-     * before any chunk unpacks guarantees newly scheduled ticks cannot collide with restored
-     * {@code subTickOrder} values.
+     * <p>在此绑定调试所属标签并恢复 {@code Level.subTickCount}，这是世界与存储同时可用的最早时机。
+     * 在任何区块解包之前恢复计数器，可以保证新调度的刻不会与恢复的 {@code subTickOrder} 值冲突。
      */
     public static void onLevelsCreated(final MinecraftServer server) {
         for (ServerLevel level : server.getAllLevels()) {
-            bindDebugOwners(level);
             if (!enabled() || store == null) {
                 continue;
             }
@@ -311,7 +296,7 @@ public final class SafeSaveManager {
             if (data.subTickCount >= 0L) {
 
                 long current = level.subTickCount;
-                // never move the counter backwards: anything already handed out must stay unique
+                // 绝不让计数器倒退：已经发出的值必须保持唯一
                 if (data.subTickCount > current) {
                     level.subTickCount = data.subTickCount;
                     DebugLog.info("{}: restored Level.subTickCount {} -> {}",
@@ -323,16 +308,14 @@ public final class SafeSaveManager {
     }
 
     /**
-     * Re-queues the saved block events into {@code ServerLevel.blockEvents}.
+     * 将保存的方块事件重新排入 {@code ServerLevel.blockEvents}。
      *
-     * <p>Order is the whole game here: the vanilla container is an {@code ObjectLinkedOpenHashSet}
-     * drained with {@code removeFirst()}, so insertion order <em>is</em> execution order. Anything
-     * already queued at this point (levels were only just constructed, but be defensive) is
-     * re-appended <em>after</em> the restored events, because the restored ones are strictly older.
+     * <p>这里顺序就是一切：原版的容器是 {@code ObjectLinkedOpenHashSet}，通过
+     * {@code removeFirst()} 取出，因此插入顺序<em>即</em>执行顺序。此时已排队的事件（世界刚刚构建，
+     * 但为保险起见仍然处理）会被重新追加到<em>恢复的事件之后</em>，因为恢复的事件严格更早。
      *
-     * <p>Note {@code runBlockEvents} puts events it cannot run yet back into {@code blockEvents}
-     * before returning, so {@code blockEventsToReschedule} never holds state across a tick boundary
-     * and does not need saving.
+     * <p>注意 {@code runBlockEvents} 会在返回前把暂时无法执行的事件放回 {@code blockEvents}，
+     * 因此 {@code blockEventsToReschedule} 不会跨刻边界保留状态，无需保存。
      */
     private static void restoreBlockEvents(final ServerLevel level, final SafeSaveStore.DimensionData data) {
         if (!data.blockEventsPendingRestore || data.blockEvents.isEmpty()) {
@@ -347,7 +330,7 @@ public final class SafeSaveManager {
         int restored = 0;
         for (SafeBlockEvent saved : data.blockEvents) {
             Identifier id = Identifier.tryParse(saved.blockId());
-            // BLOCK is a DefaultedRegistry: getValue() would silently return AIR for an unknown id.
+            // BLOCK 是 DefaultedRegistry：getValue() 遇到未知 id 会悄悄返回 AIR。
             if (id == null || !BuiltInRegistries.BLOCK.containsKey(id)) {
                 droppedBlockEventCount++;
                 DebugLog.warn("dropping block event for unknown block '{}' at ({},{},{})",
@@ -359,35 +342,32 @@ public final class SafeSaveManager {
                     block, saved.paramA(), saved.paramB()));
             restored++;
         }
-        // re-append anything that was already pending, after the restored (older) events
+        // 把原本已排队的事件重新追加到恢复的（更早的）事件之后
         queue.addAll(existing);
 
         restoredBlockEventCount += restored;
-        data.blockEvents.clear(); // consumed
+        data.blockEvents.clear(); // 已消费
         DebugLog.info("{}: restored {} block event(s) in drain order ({} pre-existing kept behind them)",
                 dimensionId(level), restored, existing.size());
     }
 
-    // -------------------------------------- moving piston chunk readiness (#3)
+    // -------------------------------------- 移动活塞所在区块的就绪（#3）
 
-    /** How many server ticks to wait for a mid-flight push's chunks before giving up. */
+    /** 在放弃之前，等待正在推进中的活塞所需区块的服务端刻数上限。 */
     private static final int PISTON_WAIT_TIMEOUT_TICKS = 600;
 
     /**
-     * A piston push can span up to 12 blocks plus sticky branches, so it routinely crosses chunk
-     * boundaries - yet {@code PistonMovingBlockEntity} ticking is gated <em>per chunk</em>
-     * ({@code LevelChunk.isTicking}). On load, chunks come up staggered, so the halves of one push
-     * finalise on different ticks; because finalisation runs {@code updateFromNeighbourShapes} and
-     * {@code neighborChanged}, the early half resolves against a world where the rest of the structure
-     * is still {@code MOVING_PISTON}, and a slime/honey structure can tear in two.
+     * 活塞一次推进可跨越最多 12 个方块，再加上粘性分支，因此经常跨区块边界——然而
+     * {@code PistonMovingBlockEntity} 的刻是<em>按区块</em>门控的（{@code LevelChunk.isTicking}）。
+     * 加载时区块是错落出现的，所以一次推进的两半会在不同的刻完成；由于完成阶段会运行
+     * {@code updateFromNeighbourShapes} 和 {@code neighborChanged}，先完成的一半会在结构其余部分仍是
+     * {@code MOVING_PISTON} 的世界中结算，粘液/蜂蜜结构可能因此被撕成两半。
      *
-     * <p>This reports (and optionally releases) once every chunk recorded as holding a moving piston is
-     * actually tickable, so the whole push resumes on one tick.
+     * <p>当记录中持有移动活塞的每个区块都真正可刻时，此方法报告一次（并可选地解除冻结），
+     * 使整个推进在同一个刻恢复。
      *
-     * <p>Deliberately does <strong>not</strong> add chunk tickets: force-loading chunks the player never
-     * asked for would change world behaviour. A chunk outside the simulation distance therefore never
-     * becomes tickable - which is also true in vanilla, so waiting forever would be wrong. Hence the
-     * timeout.
+     * <p>刻意<strong>不</strong>添加区块票（chunk ticket）：强制加载玩家从未要求的区块会改变世界行为。
+     * 因此模拟距离之外的区块永远不会变为可刻——原版也是如此，所以永远等下去是错误的。由此需要超时。
      */
     private static void checkPistonChunksReady(final ServerLevel level) {
         String dimension = dimensionId(level);
@@ -436,7 +416,7 @@ public final class SafeSaveManager {
         return sb.toString();
     }
 
-    /** {@code true} when this chunk currently holds at least one {@code PistonMovingBlockEntity}. */
+    /** 当此区块当前持有至少一个 {@code PistonMovingBlockEntity} 时为 {@code true}。 */
     private static boolean hasMovingPiston(final LevelChunk chunk) {
         for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
             if (blockEntity instanceof PistonOrderHolder) {
@@ -446,7 +426,7 @@ public final class SafeSaveManager {
         return false;
     }
 
-    /** Keeps {@link SafeSaveStore.DimensionData#pistonChunks} converged for one chunk. */
+    /** 为单个区块保持 {@link SafeSaveStore.DimensionData#pistonChunks} 同步。 */
     private static void recordPistonChunk(final ServerLevel level, final LevelChunk chunk) {
         SafeSaveStore.DimensionData data = store.dimension(dimensionId(level));
         long key = chunk.getPos().pack();
@@ -457,33 +437,24 @@ public final class SafeSaveManager {
         }
     }
 
-    private static void bindDebugOwners(final ServerLevel level) {
-        Object blockTicks = level.getBlockTicks();
-        if (blockTicks instanceof TickOwnerAware aware) {
-            aware.SS$bindOwner(level, "block");
-        }
-        Object fluidTicks = level.getFluidTicks();
-        if (fluidTicks instanceof TickOwnerAware aware) {
-            aware.SS$bindOwner(level, "fluid");
-        }
-    }
+
 
     /**
-     * Called at {@code MinecraftServer.tickServer} HEAD, once.
+     * 在 {@code MinecraftServer.tickServer} 的 HEAD 处调用一次。
      *
-     * <p>Freezes the server so that nothing advances until the operator has verified the restored
-     * state. While frozen {@code TickRateManager.runsNormally()} is false, so
-     * {@code ServerLevel.tick} skips the {@code blockTicks}/{@code fluidTicks} phases entirely and
-     * {@code gameTime} does not move — the restored ticks sit untouched.
+     * <p>冻结服务端，使一切不再推进，直到操作员确认了恢复的状态。冻结期间
+     * {@code TickRateManager.runsNormally()} 为 {@code false}，因此 {@code ServerLevel.tick}
+     * 会完全跳过 {@code blockTicks}/{@code fluidTicks} 阶段，{@code gameTime} 也不移动——
+     * 恢复的刻原封不动地等待。
      */
     public static void onFirstServerTick(final MinecraftServer server) {
         if (!freezeArmed) {
             return;
         }
         freezeArmed = false;
-        // Freeze only when there is actually restore data. Note this must test the count read from
-        // disk, not store.isEmpty(): the startup flush save creates an (empty) DimensionData for every
-        // level, which would make an otherwise-empty store look non-empty and freeze a fresh world.
+        // 仅在确实存在恢复数据时才冻结。注意这里必须检查从磁盘读到的计数，而不是 store.isEmpty()：
+        // 启动时的 flush 保存会为每个世界创建一个（空的）DimensionData，会让本来为空的存储看起来非空，
+        // 从而冻结一个全新世界。
         if (!enabled() || (loadedTickCount <= 0 && loadedBlockEventCount <= 0)) {
             return;
         }
@@ -494,13 +465,11 @@ public final class SafeSaveManager {
     }
 
     /**
-     * Called at {@code ServerLevel.tick} HEAD. Performs the one-shot per-dimension restore sweep.
+     * 在 {@code ServerLevel.tick} 的 HEAD 处调用。执行每个维度的一次性恢复扫描。
      *
-     * <p>Chunks that were prepared during {@code prepareLevels} are already handled by the
-     * {@code unpackTicks} hook; this sweep catches chunks that are loaded to {@code FULL} but have
-     * not (yet) started block-ticking, whose ticks are still sitting in {@code pendingTicks}.
-     * Applying absolute data there is strictly better than vanilla: the ticks land in the queue with
-     * their true trigger time and simply wait for the chunk to become tickable.
+     * <p>在 {@code prepareLevels} 期间准备好的区块已由 {@code unpackTicks} 钩子处理；此扫描捕获的是
+     * 已加载到 {@code FULL} 但尚未开始方块刻的区块，它们的刻仍停留在 {@code pendingTicks} 中。
+     * 在这里应用绝对数据严格优于原版：刻以其真实的触发时间进入队列，只需等待区块变为可刻即可。
      */
     public static void onLevelTickStart(final ServerLevel level) {
         if (!enabled() || store == null) {
@@ -508,7 +477,7 @@ public final class SafeSaveManager {
         }
         String dimension = dimensionId(level);
 
-        // Runs every tick (including while frozen, since ServerLevel.tick itself is not gated).
+        // 每个刻都运行（包括冻结期间，因为 ServerLevel.tick 本身不受门控）。
         long generation = pistonOrderGeneration.get();
         if (pistonOrderRebuiltAt.getOrDefault(dimension, -1L) < generation) {
             pistonOrderRebuiltAt.put(dimension, generation);
@@ -531,7 +500,7 @@ public final class SafeSaveManager {
             long key = boxed;
             Object block = blockContainers.get(key);
             Object fluid = fluidContainers.get(key);
-            // Absent from allContainers => chunk not loaded to FULL; the unpackTicks hook covers it later.
+            // 不在 allContainers 中 => 区块未加载到 FULL；稍后由 unpackTicks 钩子处理。
             if (!(block instanceof SafeTickContainer) || !(fluid instanceof SafeTickContainer)) {
                 continue;
             }
@@ -545,7 +514,7 @@ public final class SafeSaveManager {
                 dimension, swept, restoredTickCount, droppedTickCount);
     }
 
-    /** {@code true} when this level still has pending (un-applied) restore entries. */
+    /** 当此世界仍有待处理（未应用）的恢复条目时为 {@code true}。 */
     public static int pendingChunkCount(final ServerLevel level) {
         if (store == null) {
             return 0;
@@ -554,7 +523,7 @@ public final class SafeSaveManager {
         return data == null ? 0 : data.pendingRestore.size();
     }
 
-    /** Debug helper for the world-tick log line. */
+    /** 世界刻日志行的调试辅助方法。 */
     public static int pendingBlockEventCount(final Level level) {
         if (level instanceof ServerLevel serverLevel) {
             return serverLevel.blockEvents.size();
@@ -562,11 +531,10 @@ public final class SafeSaveManager {
         return -1;
     }
 
-    // ----------------------------------------------------------- restore path
+    // ----------------------------------------------------------- 恢复路径
 
     /**
-     * @return {@code true} when this chunk still has an un-applied restore entry, i.e. whatever is
-     *         currently in its tick containers is about to be discarded.
+     * @return 当此区块仍有未应用的恢复条目时为 {@code true}，即其刻容器中的当前内容即将被丢弃。
      */
     public static boolean hasPendingRestore(final LevelChunk chunk) {
         if (!enabled() || store == null) {
@@ -580,18 +548,15 @@ public final class SafeSaveManager {
     }
 
     /**
-     * Replaces a chunk's scheduled ticks with the saved absolute ones. Called from
-     * {@code LevelChunk.unpackTicks} TAIL and from the first-world-tick sweep.
+     * 用保存的绝对刻替换区块的计划刻。从 {@code LevelChunk.unpackTicks} 的 TAIL 和首个世界刻扫描中调用。
      *
-     * <p>The store entry is <em>consumed</em>, so it can never be applied twice; if the chunk later
-     * unloads, {@link #snapshotChunk} puts a fresh entry back.
+     * <p>存储条目会被<em>消费</em>，因此绝不会被应用两次；如果区块之后卸载，
+     * {@link #snapshotChunk} 会放回一个新条目。
      *
-     * @param keepBlockTicks {@code ScheduledTick}s that were already queued <em>before</em>
-     *                       {@code unpackTicks} ran, i.e. genuinely new ticks scheduled during this
-     *                       session while the chunk sat at {@code FULL}. They are re-added after the
-     *                       restore so this feature never loses a tick vanilla would have kept.
-     *                       May be {@code null}.
-     * @return {@code true} when something was restored
+     * @param keepBlockTicks 在 {@code unpackTicks} 运行<em>之前</em>就已排队的 {@code ScheduledTick}，
+     *                       即本会话期间区块处于 {@code FULL} 时真正新调度的刻。它们会在恢复之后被重新加入，
+     *                       使本功能绝不会丢失原版本会保留的刻。可为 {@code null}。
+     * @return 当有内容被恢复时为 {@code true}
      */
     public static boolean restoreChunk(final LevelChunk chunk,
                                        final List<?> keepBlockTicks,
@@ -607,8 +572,8 @@ public final class SafeSaveManager {
     }
 
     /**
-     * @param blockContainer the chunk's {@code LevelChunkTicks<Block>}
-     * @param fluidContainer the chunk's {@code LevelChunkTicks<Fluid>}
+     * @param blockContainer 该区块的 {@code LevelChunkTicks<Block>}
+     * @param fluidContainer 该区块的 {@code LevelChunkTicks<Fluid>}
      */
     @SuppressWarnings("unchecked")
     private static boolean restoreInto(final ServerLevel level,
@@ -633,15 +598,14 @@ public final class SafeSaveManager {
         return true;
     }
 
-    /** Dimensions already warned about, so the message appears once per session. */
+    /** 已警告过的维度，确保消息每个会话只出现一次。 */
     private static final Set<String> staleWarned = new HashSet<>();
 
     /**
-     * Purely diagnostic. The recorded {@code gameTime} is <strong>never</strong> used to re-anchor
-     * anything — trigger times are absolute by construction. But if it disagrees with the live
-     * {@code gameTime}, the side file is out of step with {@code level.dat} (typically: the rule was
-     * switched off for a session, so the world advanced while this file did not), and every restored
-     * tick will be correspondingly overdue. Worth saying out loud.
+     * 纯诊断用途。记录的 {@code gameTime} <strong>从不</strong>用于重新锚定任何东西——
+     * 触发时间按构造就是绝对的。但如果它与实时的 {@code gameTime} 不一致，说明旁置文件与
+     * {@code level.dat} 脱节（典型情况：某个会话关闭了规则，世界继续推进而此文件没有），
+     * 那么每个恢复的刻都会相应地过期。这一点值得明确指出。
      */
     private static void warnIfStale(final ServerLevel level) {
         String dimension = dimensionId(level);
@@ -659,8 +623,8 @@ public final class SafeSaveManager {
     }
 
     /**
-     * @param keep pre-existing ticks to re-add after the wipe; may be {@code null}
-     * @return how many pre-existing ticks were re-added
+     * @param keep 清空后需要重新加入的既有刻；可为 {@code null}
+     * @return 重新加入的既有刻数量
      */
     @SuppressWarnings("unchecked")
     private static <T> int applyTicks(final TickContainerAccess<T> container,
@@ -670,8 +634,8 @@ public final class SafeSaveManager {
         List<ScheduledTick<T>> ticks = new ArrayList<>(saved.size());
         for (SafeTick entry : saved) {
             Identifier id = Identifier.tryParse(entry.typeId());
-            // BLOCK/FLUID are DefaultedRegistry: getValue() would silently hand back AIR/EMPTY for an
-            // unknown id, so membership must be checked explicitly.
+            // BLOCK/FLUID 是 DefaultedRegistry：getValue() 遇到未知 id 会悄悄返回 AIR/EMPTY，
+            // 因此必须显式检查注册表成员资格。
             if (id == null || !registry.containsKey(id)) {
                 droppedTickCount++;
                 DebugLog.warn("dropping scheduled tick for unknown type '{}' at ({},{},{})",
@@ -693,8 +657,7 @@ public final class SafeSaveManager {
         if (keep != null) {
             for (Object raw : keep) {
                 if (raw instanceof ScheduledTick<?> tick) {
-                    // schedule() de-duplicates on (type, pos), so a pre-existing tick that the restore
-                    // already covers is dropped here rather than duplicated.
+                    // schedule() 会按 (type, pos) 去重，因此恢复已覆盖的既有刻会在这里被丢弃而非重复。
                     container.schedule((ScheduledTick<T>) tick);
                     kept++;
                 }
@@ -703,20 +666,20 @@ public final class SafeSaveManager {
         return kept;
     }
 
-    // -------------------------------------------------------------- save path
+    // -------------------------------------------------------------- 保存路径
 
     /**
-     * Captures a chunk's ticks into the store. Called from {@code ServerLevel.unload} HEAD, i.e.
-     * right before the tick containers are unregistered from the level.
+     * 将区块的刻捕获到存储中。从 {@code ServerLevel.unload} 的 HEAD 处调用，
+     * 即刻容器刚从世界中注销之前。
      */
     public static void snapshotChunk(final ServerLevel level, final LevelChunk chunk) {
         if (!enabled() || store == null) {
             return;
         }
-        // Guard the cast: ChunkAccess.getBlockTicks() is only a LevelChunkTicks for a real LevelChunk.
-        // ImposterProtoChunk hands back BlackholeTickAccess.emptyContainer() when writes are disabled,
-        // which does not implement SafeTickContainer, so a blind cast would be a ClassCastException.
-        // snapshotLevel() already guards this way; this path did not.
+        // 保护这个强转：ChunkAccess.getBlockTicks() 只在真正的 LevelChunk 上才是 LevelChunkTicks。
+        // ImposterProtoChunk 在写入被禁用时会返回 BlackholeTickAccess.emptyContainer()，
+        // 它没有实现 SafeTickContainer，盲目强转会抛出 ClassCastException。
+        // snapshotLevel() 已经这样防护；这条路径之前没有。
         recordPistonChunk(level, chunk);
         if (!(chunk.getBlockTicks() instanceof SafeTickContainer)
                 || !(chunk.getFluidTicks() instanceof SafeTickContainer)) {
@@ -732,17 +695,15 @@ public final class SafeSaveManager {
         SafeTickContainer blockContainer = (SafeTickContainer) blockTicks;
         SafeTickContainer fluidContainer = (SafeTickContainer) fluidTicks;
 
-        // A container still holding pendingTicks has never been unpacked, so it has no absolute
-        // timing to capture. Leave whatever the store already holds for this chunk alone: that entry
-        // came from a session in which the chunk *was* ticking, and absolute times never drift.
+        // 仍持有 pendingTicks 的容器从未被解包，因此没有可捕获的绝对时间。
+        // 存储中已有的该区块条目原样保留：它来自该区块*确实*在刻的会话，而绝对时间永不漂移。
         if (blockContainer.SS$hasPendingTicks() || fluidContainer.SS$hasPendingTicks()) {
             return;
         }
 
-        // Still queued for restore => the containers currently hold vanilla's re-anchored ticks,
-        // exactly the data we intend to throw away. Overwriting the entry with them would silently
-        // defeat the whole feature. This matters in practice: MC performs a flush save right after
-        // startup, which can land before the restore.
+        // 仍在恢复队列中 => 容器当前持有的是原版重新锚定的刻，正是我们打算丢弃的数据。
+        // 用它们覆盖条目会悄悄让整个功能失效。这在实践中很重要：
+        // MC 在启动后不久就会执行一次 flush 保存，可能赶在恢复之前。
         SafeSaveStore.DimensionData data = store.dimensionOrNull(dimensionId(level));
         if (data != null && data.pendingRestore.contains(packedChunkPos)) {
             return;
@@ -768,7 +729,7 @@ public final class SafeSaveManager {
                     tick.priority().getValue(),
                     tick.subTickOrder()));
         }
-        // Drain order, purely so the file is pleasant to inspect; restore uses the stored fields.
+        // 按取出顺序排序，纯粹为了让文件便于检查；恢复使用存储的字段。
         out.sort((a, b) -> {
             int cmp = Long.compare(a.triggerTick(), b.triggerTick());
             if (cmp != 0) {
@@ -781,12 +742,11 @@ public final class SafeSaveManager {
     }
 
     /**
-     * Snapshots every loaded chunk of every dimension and writes the side file.
+     * 快照每个维度的每个已加载区块并写入旁置文件。
      *
-     * <p>Hooked at {@code MinecraftServer.saveAllChunks} HEAD rather than RETURN: with
-     * {@code flush=true} vanilla runs {@code processUnloads} during the save, which unregisters tick
-     * containers, so by RETURN part of the world would already be gone from
-     * {@code LevelTicks.allContainers}.
+     * <p>挂在 {@code MinecraftServer.saveAllChunks} 的 HEAD 而非 RETURN：当 {@code flush=true} 时，
+     * 原版会在保存期间运行 {@code processUnloads}，注销刻容器，因此到 RETURN 时
+     * 世界的一部分已经从 {@code LevelTicks.allContainers} 中消失。
      */
     public static void saveAll(final MinecraftServer server) {
         if (!enabled() || store == null || filePath == null) {
@@ -797,20 +757,20 @@ public final class SafeSaveManager {
             chunks += snapshotLevel(level);
             SafeSaveStore.DimensionData data = store.dimension(dimensionId(level));
             data.subTickCount = level.subTickCount;
-            data.gameTime = level.getGameTime(); // debug only
+            data.gameTime = level.getGameTime(); // 仅调试用
             snapshotBlockEvents(level, data);
         }
-        store.setServerTickCount(server.getTickCount()); // debug only
+        store.setServerTickCount(server.getTickCount()); // 仅调试用
         write();
         DebugLog.info("saved {} scheduled tick(s) over {} loaded chunk(s) + {} block event(s) to {}",
                 store.totalTicks(), chunks, store.totalBlockEvents(), FILE_NAME);
     }
 
     /**
-     * Captures the level-wide block-event queue verbatim, preserving drain order.
+     * 原样捕获世界级的方块事件队列，保持取出顺序。
      *
-     * <p>Unlike scheduled ticks there is no per-chunk bookkeeping to do: the queue lives on the
-     * {@code ServerLevel}, is fully in memory, and is simply overwritten on every save.
+     * <p>与计划刻不同，这里不需要按区块记账：队列位于 {@code ServerLevel} 上，完全在内存中，
+     * 每次保存时直接覆盖即可。
      */
     private static void snapshotBlockEvents(final ServerLevel level, final SafeSaveStore.DimensionData data) {
         data.blockEvents.clear();

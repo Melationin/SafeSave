@@ -84,5 +84,5 @@ publishing {
 }
 
 stonecutter {
-    // Subproject configuration
+    // 子项目配置
 }

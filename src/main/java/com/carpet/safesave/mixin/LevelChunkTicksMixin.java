@@ -15,10 +15,10 @@ import java.util.Queue;
 import java.util.Set;
 
 /**
- * Gives safe-save write access to a single chunk's tick container.
+ * 让 safe-save 获得对单个区块刻容器的写入访问。
  *
- * <p>Shadow fields use wildcards because JVM field descriptors erase generics; this keeps the mixin
- * non-generic while matching {@code LevelChunkTicks<T>}.
+ * <p>Shadow 字段使用通配符，因为 JVM 字段描述符会擦除泛型；这使 mixin 保持非泛型，同时能匹配
+ * {@code LevelChunkTicks<T>}。
  */
 @Mixin(LevelChunkTicks.class)
 public abstract class LevelChunkTicksMixin implements SafeTickContainer {
@@ -31,7 +31,7 @@ public abstract class LevelChunkTicksMixin implements SafeTickContainer {
     @Final
     private Set<ScheduledTick<?>> ticksPerPosition;
 
-    /** Non-final in vanilla: nulled out by {@code unpack()}. */
+    /** 原版中非 final：由 {@code unpack()} 置空。 */
     @Shadow
     private List<SavedTick<?>> pendingTicks;
 
@@ -45,7 +45,7 @@ public abstract class LevelChunkTicksMixin implements SafeTickContainer {
     public void SS$replaceAll(final List<?> scheduledTicks) {
         this.tickQueue.clear();
         this.ticksPerPosition.clear();
-        // Drop anything still waiting to be unpacked: the supplied list is authoritative.
+        // 丢弃任何仍在等待解包的内容：提供的列表才是权威。
         this.pendingTicks = null;
 
         LevelChunkTicks self = (LevelChunkTicks) (Object) this;
@@ -56,10 +56,9 @@ public abstract class LevelChunkTicksMixin implements SafeTickContainer {
 
     @Override
     public List<?> SS$snapshotQueue() {
-        // tickQueue is `private final` with an initializer in vanilla, so this can only be null if
-        // something else in the environment interfered with LevelChunkTicks (another mixin on its
-        // constructor/field, or a mod/MC version this build was not compiled against). Crashing the
-        // autosave over it would be far worse than skipping one chunk, so report loudly and degrade.
+        // tickQueue 在原版中是带初始化的 `private final`，因此它只有在环境中其他东西干扰了
+        // LevelChunkTicks 时才会为 null（例如作用于其构造器/字段的其他 mixin，或本构建未针对编译的
+        // 模组/MC 版本）。为了它让自动保存崩溃远比跳过这一个区块糟糕得多，所以大声报告并降级处理。
         if (this.tickQueue == null) {
             DebugLog.warnOnce("null-tickQueue",
                     "LevelChunkTicks.tickQueue is null on {} - skipping this chunk's scheduled ticks. "

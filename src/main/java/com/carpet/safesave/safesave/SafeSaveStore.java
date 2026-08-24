@@ -13,28 +13,26 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * In-memory authoritative store of absolute scheduled-tick data, plus its NBT form.
+ * 绝对计划刻数据的内存权威存储，及其 NBT 形式。
  *
- * <p>Keyed {@code dimension id -> packed chunk pos -> } {@link ChunkSnapshot}. An entry for a chunk
- * means "this is the exact tick state of that chunk as of the last time we observed it", where
- * "observed" is either <em>the chunk was unloaded</em> or <em>a world save happened while it was
- * loaded</em>. Because {@link SafeTick#triggerTick()} is absolute, a stale entry for a chunk that
- * has been unloaded the whole time is still perfectly valid — nothing drifts.
+ * <p>键结构为 {@code 维度 id -> 打包的区块坐标 -> } {@link ChunkSnapshot}。区块的一个条目表示
+ * “这是我们最后一次观察该区块时的确切刻状态”，“观察”指 <em>区块被卸载</em> 或
+ * <em>区块加载期间发生了一次世界保存</em>。由于 {@link SafeTick#triggerTick()} 是绝对的，
+ * 一个一直未加载区块的陈旧条目仍然完全有效——不会漂移。
  *
- * <p>The {@code debug} block ({@link #serverTickCount}, {@link DimensionData#gameTime}) is written
- * for diagnostics only and is deliberately <strong>never</strong> consulted while restoring ticks.
+ * <p>{@code debug} 块（{@link #serverTickCount}、{@link DimensionData#gameTime}）仅用于诊断写入，
+ * 并刻意<strong>从不</strong>在恢复刻时被查阅。
  */
 public final class SafeSaveStore {
 
     /**
-     * Current on-disk layout. v1 = scheduled ticks only; v2 adds the ordered block-event queue;
-     * v3 adds the set of chunks holding a moving piston.
-     * Older versions are still readable ({@link #MIN_READABLE_VERSION}), they simply carry no
-     * block events.
+     * 当前磁盘布局。v1 = 仅计划刻；v2 增加有序方块事件队列；
+     * v3 增加持有移动活塞的区块集合。
+     * 旧版本仍可读取（{@link #MIN_READABLE_VERSION}），只是不包含方块事件。
      */
     public static final int FORMAT_VERSION = 3;
 
-    /** Oldest layout this build can still read. */
+    /** 此构建仍可读取的最旧布局。 */
     public static final int MIN_READABLE_VERSION = 1;
 
     private static final String KEY_VERSION = "version";
@@ -49,12 +47,12 @@ public final class SafeSaveStore {
     private static final String KEY_CHUNK_Z = "z";
     private static final String KEY_BLOCK_TICKS = "block";
     private static final String KEY_FLUID_TICKS = "fluid";
-    /** ordered queue of pending block events (v2+) */
+    /** 待处理方块事件的有序队列（v2+） */
     private static final String KEY_BLOCK_EVENTS = "block_events";
-    /** packed chunk positions that held a PistonMovingBlockEntity at save time (v3+) */
+    /** 保存时持有 PistonMovingBlockEntity 的打包区块坐标（v3+） */
     private static final String KEY_PISTON_CHUNKS = "piston_chunks";
 
-    /** Per-chunk absolute tick lists. Lists are stored in drain order purely for readability. */
+    /** 每区块的绝对刻列表。列表按取出顺序存储，纯粹为了可读性。 */
     public record ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks) {
         public boolean isEmpty() {
             return this.blockTicks.isEmpty() && this.fluidTicks.isEmpty();
@@ -65,39 +63,36 @@ public final class SafeSaveStore {
         }
     }
 
-    /** Per-dimension state. */
+    /** 每维度状态。 */
     public static final class DimensionData {
-        /** packed {@link ChunkPos} -> snapshot. The live snapshot store; rewritten on every save. */
+        /** 打包的 {@link ChunkPos} -> 快照。实时快照存储；每次保存时重写。 */
         public final Map<Long, ChunkSnapshot> chunks = new LinkedHashMap<>();
         /**
-         * Chunk keys that were read <em>from disk this session</em> and have not been applied yet —
-         * the restore queue, deliberately kept separate from {@link #chunks}.
+         * <em>本会话从磁盘读取</em>且尚未应用的区块键——恢复队列，刻意与 {@link #chunks} 分开。
          *
-         * <p>Without this separation a save landing between two restore paths would re-populate
-         * {@link #chunks} from the already-restored containers, and the later path would then apply
-         * the same chunk a second time. Not harmful (the data is identical and idempotent) but it
-         * double-counts and muddies the semantics. Never persisted.
+         * <p>如果没有这个分离，落在两条恢复路径之间的保存会用已恢复的容器重新填充
+         * {@link #chunks}，后一条路径就会把同一个区块应用第二次。虽然无害（数据相同且幂等），
+         * 但会重复计数并模糊语义。永不持久化。
          */
         public final Set<Long> pendingRestore = new LinkedHashSet<>();
-        /** {@code true} while {@link #blockEvents} still holds un-applied on-disk data. */
+        /** 当 {@link #blockEvents} 仍持有未应用的磁盘数据时为 {@code true}。 */
         public boolean blockEventsPendingRestore;
         /**
-         * Packed chunk positions that held a {@code PistonMovingBlockEntity} when last observed.
-         * Recorded so that on load we know which chunks a mid-flight push spans <em>before</em> any of
-         * them are loaded - a set that cannot be discovered by scanning, since the chunks are not in
-         * memory yet (#3).
+         * 上次观察时持有 {@code PistonMovingBlockEntity} 的打包区块坐标。
+         * 记录下来是为了在加载时，于任何这些区块<em>被加载之前</em>就知道一次进行中的推进跨越了哪些区块——
+         * 这个集合无法通过扫描发现，因为区块尚未在内存中（#3）。
          */
         public final Set<Long> pistonChunks = new LinkedHashSet<>();
-        /** Subset of {@link #pistonChunks} read from disk and not yet confirmed tickable. Transient. */
+        /** 从磁盘读入且尚未确认可刻的 {@link #pistonChunks} 子集。瞬态。 */
         public final Set<Long> pistonChunksAwaitingTicking = new LinkedHashSet<>();
-        /** {@code Level.subTickCount} at save time; {@code -1} = unknown */
+        /** 保存时的 {@code Level.subTickCount}；{@code -1} = 未知 */
         public long subTickCount = -1L;
         /**
-         * Pending block events, <strong>in drain order</strong>. Level-wide, not per-chunk, because
-         * {@code ServerLevel.blockEvents} is a single level-wide queue.
+         * 待处理的方块事件，<strong>按取出顺序</strong>。世界级而非区块级，因为
+         * {@code ServerLevel.blockEvents} 是单一的世界级队列。
          */
         public final List<SafeBlockEvent> blockEvents = new ArrayList<>();
-        /** debug only — never used to restore ticks */
+        /** 仅调试用——从不用于恢复刻 */
         public long gameTime = Long.MIN_VALUE;
 
         public int totalTicks() {
@@ -110,10 +105,10 @@ public final class SafeSaveStore {
     }
 
     private final Map<String, DimensionData> dimensions = new LinkedHashMap<>();
-    /** debug only — never used to restore ticks */
+    /** 仅调试用——从不用于恢复刻 */
     private int serverTickCount = -1;
 
-    // -------------------------------------------------------------- accessors
+    // -------------------------------------------------------------- 访问器
 
     public DimensionData dimension(final String dimensionId) {
         return this.dimensions.computeIfAbsent(dimensionId, k -> new DimensionData());
@@ -156,7 +151,7 @@ public final class SafeSaveStore {
     }
 
     /**
-     * Replaces (or removes, when {@code snapshot} is empty) the entry for one chunk.
+     * 替换（当 {@code snapshot} 为空时则移除）某个区块的条目。
      */
     public void put(final String dimensionId, final long packedChunkPos, final ChunkSnapshot snapshot) {
         DimensionData data = this.dimension(dimensionId);
@@ -168,8 +163,8 @@ public final class SafeSaveStore {
     }
 
     /**
-     * Dequeues one chunk from the restore queue and returns its snapshot, so it cannot be applied
-     * twice even if a save re-populates {@link DimensionData#chunks} in the meantime.
+     * 从恢复队列中取出一个区块并返回其快照，因此即使期间一次保存重新填充了
+     * {@link DimensionData#chunks}，它也不可能被应用两次。
      */
     public ChunkSnapshot take(final String dimensionId, final long packedChunkPos) {
         DimensionData data = this.dimensions.get(dimensionId);
@@ -195,7 +190,7 @@ public final class SafeSaveStore {
             levelTag.putString(KEY_DIMENSION, entry.getKey());
             levelTag.putLong(KEY_SUB_TICK_COUNT, data.subTickCount);
             if (data.gameTime != Long.MIN_VALUE) {
-                // debug only
+                // 仅调试用
                 levelTag.putLong(KEY_DEBUG_GAME_TIME, data.gameTime);
             }
 
@@ -256,7 +251,7 @@ public final class SafeSaveStore {
         SafeSaveStore store = new SafeSaveStore();
         int version = root.getIntOr(KEY_VERSION, 0);
         if (version < MIN_READABLE_VERSION || version > FORMAT_VERSION) {
-            // Unknown layout: refuse rather than silently mis-restoring timings.
+            // 未知布局：拒绝而不是悄然错误地恢复时间。
             throw new IllegalStateException("unsupported safe-save format version " + version
                     + " (readable range " + MIN_READABLE_VERSION + ".." + FORMAT_VERSION + ")");
         }
@@ -326,7 +321,7 @@ public final class SafeSaveStore {
         return ticks;
     }
 
-    /** Debug snapshot of per-dimension game times, for {@code /safesave status}. */
+    /** 各维度游戏时间的调试快照，供 {@code /safesave status} 使用。 */
     public Map<String, Long> debugGameTimes() {
         Map<String, Long> out = new HashMap<>();
         for (Map.Entry<String, DimensionData> entry : this.dimensions.entrySet()) {

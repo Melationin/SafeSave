@@ -1,7 +1,5 @@
 package com.carpet.safesave.mixin;
 
-import com.carpet.safesave.debug.DebugLog;
-import com.carpet.safesave.debug.DebugSwitches;
 import com.carpet.safesave.safesave.SafeSaveManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -17,56 +15,24 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.function.BooleanSupplier;
 
 /**
- * World-tick debug output, block-event debug output, and the safe-save chunk-unload snapshot.
+ * 世界刻调试输出、方块事件调试输出，以及 safe-save 的区块卸载快照。
  */
 @Mixin(ServerLevel.class)
 public abstract class ServerLevelMixin {
 
     /**
-     * Head of {@code ServerLevel.tick}: the requested "print the world tick" channel, plus the
-     * one-shot per-dimension restore sweep.
+     * {@code ServerLevel.tick} 的 HEAD：输出请求的“打印世界刻”通道，外加每维度的一次性恢复扫描。
      */
     @Inject(method = "tick", at = @At("HEAD"))
     private void SS$onWorldTickHead(final BooleanSupplier haveTime, final CallbackInfo ci) {
         ServerLevel self = (ServerLevel) (Object) this;
         SafeSaveManager.onLevelTickStart(self);
-        if (DebugSwitches.DEBUG) {
-            DebugLog.worldTickStart(self, self.getServer().getTickCount(), !self.tickRateManager().runsNormally());
-        }
     }
+
 
     /**
-     * {@code blockEvents} is a {@code Set}, so an identical event queued twice in one tick is
-     * silently dropped. Sampling {@code contains} at HEAD is the only way to observe that.
-     */
-    @Inject(method = "blockEvent", at = @At("HEAD"))
-    private void SS$onBlockEventAdded(final BlockPos pos,
-                                                 final Block block,
-                                                 final int paramA,
-                                                 final int paramB,
-                                                 final CallbackInfo ci) {
-        if (!DebugSwitches.DEBUG || !DebugSwitches.isEnabled(DebugSwitches.Channel.BLOCK_EVENTS)) {
-            return;
-        }
-        ServerLevel self = (ServerLevel) (Object) this;
-        var queue = self.blockEvents;
-        boolean accepted = !queue.contains(new BlockEventData(pos, block, paramA, paramB));
-        DebugLog.blockEventAdded(self, pos, block, paramA, paramB, accepted,
-                accepted ? queue.size() + 1 : queue.size());
-    }
-
-    @Inject(method = "doBlockEvent", at = @At("RETURN"))
-    private void SS$onBlockEventRun(final BlockEventData eventData,
-                                               final CallbackInfoReturnable<Boolean> cir) {
-        if (!DebugSwitches.DEBUG || !DebugSwitches.isEnabled(DebugSwitches.Channel.BLOCK_EVENTS)) {
-            return;
-        }
-        DebugLog.blockEventRun((ServerLevel) (Object) this, eventData, cir.getReturnValueZ());
-    }
-
-    /**
-     * Head of {@code ServerLevel.unload}: the last moment at which the chunk's tick containers are
-     * still registered with the level, so absolute timings can be captured before they are dropped.
+     * {@code ServerLevel.unload} 的 HEAD：区块的刻容器仍注册在世界中的最后时刻，
+     * 可在它们被移除之前捕获绝对时间。
      */
     @Inject(method = "unload", at = @At("HEAD"))
     private void SS$onChunkUnload(final LevelChunk levelChunk, final CallbackInfo ci) {

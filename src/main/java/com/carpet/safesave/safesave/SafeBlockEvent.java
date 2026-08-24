@@ -3,24 +3,22 @@ package com.carpet.safesave.safesave;
 import net.minecraft.nbt.CompoundTag;
 
 /**
- * One queued block event, captured for lossless restore.
+ * 一条已排队的方块事件，为无损恢复而捕获。
  *
- * <p>Vanilla keeps these in {@code ServerLevel.blockEvents} and <strong>never persists them at
- * all</strong> — a restart silently discards every in-flight block event (a piston that had queued
- * {@code TRIGGER_EXTEND} but not yet executed it simply forgets).
+ * <p>原版将这些保存在 {@code ServerLevel.blockEvents} 中，并且<strong>根本不持久化</strong>——
+ * 重启会悄然丢弃所有进行中的方块事件（一个已排队 {@code TRIGGER_EXTEND} 但尚未执行的活塞会直接忘掉）。
  *
- * <p>Two properties of the vanilla container must be respected when restoring:
+ * <p>恢复时必须尊重原版容器的两个特性：
  * <ul>
- *   <li>it is an {@code ObjectLinkedOpenHashSet}, so it is <em>ordered</em> —
- *       {@code runBlockEvents} drains it with {@code removeFirst()} in insertion order;</li>
- *   <li>it is a <em>set</em>, so an identical {@code (pos, block, paramA, paramB)} cannot appear
- *       twice.</li>
+ *   <li>它是 {@code ObjectLinkedOpenHashSet}，因此是<em>有序</em>的——
+ *       {@code runBlockEvents} 用 {@code removeFirst()} 按插入顺序取出；</li>
+ *   <li>它是<em>集合</em>，因此相同的 {@code (pos, block, paramA, paramB)} 不能出现两次。</li>
  * </ul>
- * Storing an ordered NBT list and re-adding in order reproduces both exactly.
+ * 存储有序的 NBT 列表并按序重新加入即可精确复现这两点。
  *
- * @param blockId registry id of {@code BlockEventData.block()}
- * @param paramA  {@code BlockEventData.paramA()} — for pistons: 0 extend, 1 contract, 2 drop
- * @param paramB  {@code BlockEventData.paramB()} — for pistons: {@code Direction.get3DDataValue()}
+ * @param blockId {@code BlockEventData.block()} 的注册表 id
+ * @param paramA  {@code BlockEventData.paramA()}——对活塞：0 伸出，1 收回，2 掉落
+ * @param paramB  {@code BlockEventData.paramB()}——对活塞：{@code Direction.get3DDataValue()}
  */
 public record SafeBlockEvent(String blockId, int x, int y, int z, int paramA, int paramB) {
 
@@ -43,7 +41,7 @@ public record SafeBlockEvent(String blockId, int x, int y, int z, int paramA, in
     }
 
     /**
-     * @return the parsed event, or {@code null} when the entry is malformed (missing/blank id)
+     * @return 解析出的事件；当条目格式错误（id 缺失/为空）时为 {@code null}
      */
     public static SafeBlockEvent load(final CompoundTag tag) {
         String id = tag.getStringOr(KEY_ID, "");

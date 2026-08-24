@@ -1,17 +1,16 @@
 package com.carpet.safesave.safesave;
 
 /**
- * Duck interface injected into {@code PistonMovingBlockEntity}, exposing its creation order.
+ * 注入 {@code PistonMovingBlockEntity} 的鸭子接口，暴露其创建顺序。
  *
- * <p>Vanilla ticks block entities in {@code Level.blockEntityTickers} insertion order. Before a save
- * that is the order {@code PistonBaseBlock.moveBlocks} created them in (reverse {@code toPush}, arm
- * last). After a reload it becomes {@code BlockPos} hash order, because the chunk writes its block
- * entities from a {@code HashSet} ({@code ChunkAccess.getBlockEntitiesPos}) and re-registers them
- * from a {@code HashMap} ({@code pendingBlockEntities}). Persisting a creation sequence number lets
- * the original relative order be restored.
+ * <p>原版按 {@code Level.blockEntityTickers} 的插入顺序刻方块实体。保存前，该顺序就是
+ * {@code PistonBaseBlock.moveBlocks} 创建它们的顺序（{@code toPush} 反向，活塞臂最后）。
+ * 重载后它变成 {@code BlockPos} 哈希顺序，因为区块从一个 {@code HashSet}
+ * （{@code ChunkAccess.getBlockEntitiesPos}）写出方块实体，再从 {@code HashMap}
+ * （{@code pendingBlockEntities}）重新注册。持久化创建序号即可恢复原始相对顺序。
  */
 public interface PistonOrderHolder {
 
-    /** Monotonic creation sequence number; {@link Long#MIN_VALUE} when unknown. */
+    /** 单调递增的创建序号；未知时为 {@link Long#MIN_VALUE}。 */
     long SS$pistonOrder();
 }

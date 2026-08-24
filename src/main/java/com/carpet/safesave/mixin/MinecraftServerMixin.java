@@ -11,32 +11,30 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.function.BooleanSupplier;
 
 /**
- * Server-level safe-save wiring: level binding, the pre-first-tick freeze, and the save snapshot.
+ * 服务端级 safe-save 接线：世界绑定、首刻前冻结，以及保存快照。
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
 
     /**
-     * {@code prepareLevels} runs after {@code createLevels} but before any chunk is prepared for
-     * ticking, and it is still inside {@code loadLevel} — i.e. after Carpet's {@code onServerLoaded}
-     * has already read the side file. That makes it the earliest point where both the levels and the
-     * restore data exist, which is exactly what restoring {@code Level.subTickCount} requires.
+     * {@code prepareLevels} 在 {@code createLevels} 之后、任何区块被准备好用于刻之前运行，
+     * 且仍在 {@code loadLevel} 内部——即 Carpet 的 {@code onServerLoaded} 已经读取旁置文件之后。
+     * 这使它成为世界与恢复数据同时存在的最早时机，正是恢复 {@code Level.subTickCount} 所需的。
      */
     @Inject(method = "prepareLevels", at = @At("HEAD"))
     private void SS$onLevelsCreated(final CallbackInfo ci) {
         SafeSaveManager.onLevelsCreated((MinecraftServer) (Object) this);
     }
 
-    /** Freeze before the very first server tick, so nothing advances before the restore is verified. */
+    /** 在第一个服务端刻之前冻结，确保恢复被确认前一切不推进。 */
     @Inject(method = "tickServer", at = @At("HEAD"))
     private void SS$beforeFirstServerTick(final BooleanSupplier haveTime, final CallbackInfo ci) {
         SafeSaveManager.onFirstServerTick((MinecraftServer) (Object) this);
     }
 
     /**
-     * HEAD, not RETURN: with {@code flush=true} vanilla runs {@code processUnloads} during the save,
-     * which unregisters tick containers, so at RETURN part of the world would already have vanished
-     * from {@code LevelTicks.allContainers}.
+     * 用 HEAD 而非 RETURN：当 {@code flush=true} 时原版会在保存期间运行 {@code processUnloads}，
+     * 注销刻容器，因此到 RETURN 时世界的一部分已经从 {@code LevelTicks.allContainers} 中消失。
      */
     @Inject(method = "saveAllChunks", at = @At("HEAD"))
     private void SS$onSaveAllChunks(final boolean silent,

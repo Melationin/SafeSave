@@ -14,11 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Formatting + emission for the {@link DebugSwitches} channels.
- *
- * <p>Every public method here re-checks its channel, so callers may call unconditionally; the
- * {@code DebugSwitches.DEBUG &&} guard at the call site is still preferred because it lets javac
- * strip the call entirely in a release build.
+ * <p>这里每个公开方法都会重新检查自己的通道，因此调用方可以无条件调用；但仍然建议在调用处使用
+ * {@code DebugSwitches.DEBUG &&} 守卫，因为它能让 javac 在发布构建中完全剥离该调用。
  */
 public final class DebugLog {
     private static final Logger LOG = LoggerFactory.getLogger("safesave");
@@ -26,9 +23,9 @@ public final class DebugLog {
     private DebugLog() {
     }
 
-    // ---------------------------------------------------------------- helpers
+    // ---------------------------------------------------------------- 辅助方法
 
-    /** Short dimension name, e.g. {@code overworld}. Never throws. */
+    /** 简短的维度名，如 {@code overworld}。绝不抛异常。 */
     public static String dimensionName(final Level level) {
         if (level == null) {
             return "?";
@@ -40,7 +37,7 @@ public final class DebugLog {
         }
     }
 
-    /** Registry id of a scheduled-tick payload ({@link Block} or {@link Fluid}). */
+    /** 计划刻载荷（{@link Block} 或 {@link Fluid}）的注册表 id。 */
     public static String typeId(final Object type) {
         if (type instanceof Block block) {
             return BuiltInRegistries.BLOCK.getKey(block).toString();
@@ -51,128 +48,10 @@ public final class DebugLog {
         return String.valueOf(type);
     }
 
-    private static String pos(final BlockPos pos) {
-        return "(" + pos.getX() + "," + pos.getY() + "," + pos.getZ() + ")";
-    }
 
-    // -------------------------------------------------- scheduled tick channel
+    // ------------------------------------------------------------ 通用信息
 
-    /**
-     * @param owner       human-readable owner label, e.g. {@code minecraft:overworld/block}
-     * @param accepted    {@code false} when the schedule call was swallowed by the
-     *                    {@code (type, pos)} de-duplication rule
-     * @param currentTick current game time, or {@link Long#MIN_VALUE} when unknown
-     */
-    public static void scheduledTickAdded(final String owner,
-                                          final ScheduledTick<?> tick,
-                                          final boolean accepted,
-                                          final long currentTick) {
-        if (!DebugSwitches.isEnabled(DebugSwitches.Channel.SCHEDULED_TICKS)) {
-            return;
-        }
-        StringBuilder sb = new StringBuilder(128);
-        sb.append("[ST][").append(accepted ? "ADD  " : "DEDUP").append("] ")
-                .append(owner).append(' ')
-                .append(typeId(tick.type())).append(' ')
-                .append(pos(tick.pos()))
-                .append(" trigger=").append(tick.triggerTick());
-        if (currentTick != Long.MIN_VALUE) {
-            sb.append(" now=").append(currentTick)
-                    .append(" delay=").append(tick.triggerTick() - currentTick);
-        }
-        sb.append(" prio=").append(tick.priority())
-                .append('(').append(tick.priority().getValue()).append(')')
-                .append(" sub=").append(tick.subTickOrder());
-        LOG.info(sb.toString());
-    }
-
-    public static void scheduledTickRun(final String owner,
-                                       final ScheduledTick<?> tick,
-                                       final long currentTick) {
-        if (!DebugSwitches.isEnabled(DebugSwitches.Channel.SCHEDULED_TICKS)) {
-            return;
-        }
-        LOG.info("[ST][RUN  ] {} {} {} trigger={} now={} late={} prio={}({}) sub={}",
-                owner,
-                typeId(tick.type()),
-                pos(tick.pos()),
-                tick.triggerTick(),
-                currentTick,
-                currentTick - tick.triggerTick(),
-                tick.priority(),
-                tick.priority().getValue(),
-                tick.subTickOrder());
-    }
-
-    /** Emitted when the payload type could not be resolved from {@code alreadyRunThisTick}. */
-    public static void scheduledTickRunUnknown(final String owner, final BlockPos pos, final Object type) {
-        if (!DebugSwitches.isEnabled(DebugSwitches.Channel.SCHEDULED_TICKS)) {
-            return;
-        }
-        LOG.info("[ST][RUN  ] {} {} {} (no ScheduledTick metadata available)", owner, typeId(type), pos(pos));
-    }
-
-    // ----------------------------------------------------- block event channel
-
-    /**
-     * @param queueSizeAfter size of {@code ServerLevel.blockEvents} after the add attempt
-     * @param accepted       {@code false} when the event was swallowed by the
-     *                       {@code ObjectLinkedOpenHashSet} de-duplication
-     */
-    public static void blockEventAdded(final ServerLevel level,
-                                       final BlockPos pos,
-                                       final Block block,
-                                       final int paramA,
-                                       final int paramB,
-                                       final boolean accepted,
-                                       final int queueSizeAfter) {
-        if (!DebugSwitches.isEnabled(DebugSwitches.Channel.BLOCK_EVENTS)) {
-            return;
-        }
-        LOG.info("[BE][{}] {} {} {} a={} b={} queue={} gameTime={}",
-                accepted ? "ADD  " : "DEDUP",
-                dimensionName(level),
-                BuiltInRegistries.BLOCK.getKey(block),
-                pos(pos),
-                paramA,
-                paramB,
-                queueSizeAfter,
-                level.getGameTime());
-    }
-
-    public static void blockEventRun(final ServerLevel level, final BlockEventData data, final boolean handled) {
-        if (!DebugSwitches.isEnabled(DebugSwitches.Channel.BLOCK_EVENTS)) {
-            return;
-        }
-        LOG.info("[BE][RUN  ] {} {} {} a={} b={} handled={} state={}",
-                dimensionName(level),
-                BuiltInRegistries.BLOCK.getKey(data.block()),
-                pos(data.pos()),
-                data.paramA(),
-                data.paramB(),
-                handled,
-                level.getBlockState(data.pos()));
-    }
-
-    // ------------------------------------------------------ world tick channel
-
-    public static void worldTickStart(final ServerLevel level, final int serverTickCount, final boolean frozen) {
-        if (!DebugSwitches.isEnabled(DebugSwitches.Channel.WORLD_TICK)) {
-            return;
-        }
-        LOG.info("[TICK] {} gameTime={} serverTick={} frozen={} blockTicks={} fluidTicks={} blockEventsPending={}",
-                dimensionName(level),
-                level.getGameTime(),
-                serverTickCount,
-                frozen,
-                level.getBlockTicks().count(),
-                level.getFluidTicks().count(),
-                SafeSaveManager.pendingBlockEventCount(level));
-    }
-
-    // ------------------------------------------------------------ generic info
-
-    /** Always-on informational output for the safe-save feature (not gated by a channel). */
+    /** safe-save 功能常开的信息输出（不受通道门控）。 */
     public static void info(final String format, final Object... args) {
         LOG.info("[safe-save] " + format, args);
     }
@@ -183,7 +62,7 @@ public final class DebugLog {
 
     private static final java.util.Set<String> WARNED_ONCE = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-    /** Logs a warning at most once per {@code key}, so a per-chunk anomaly cannot flood the log. */
+    /** 每个 {@code key} 最多记录一次警告，避免按区块的异常刷屏日志。 */
     public static void warnOnce(final String key, final String format, final Object... args) {
         if (WARNED_ONCE.add(key)) {
             LOG.warn("[safe-save] " + format, args);

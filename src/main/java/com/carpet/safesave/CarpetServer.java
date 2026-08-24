@@ -1,13 +1,9 @@
 package com.carpet.safesave;
 
 import carpet.CarpetExtension;
-import com.carpet.safesave.commands.DebugCommand;
 import com.carpet.safesave.rules.SafeSaveRules;
 import com.carpet.safesave.safesave.SafeSaveManager;
-import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.api.ModInitializer;
-import net.minecraft.commands.CommandBuildContext;
-import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.Map;
@@ -34,8 +30,8 @@ public class CarpetServer implements CarpetExtension, ModInitializer {
 
     @Override
     public void onServerLoaded(MinecraftServer server) {
-        // Fires at MinecraftServer.loadLevel HEAD, i.e. before createLevels/prepareLevels, so the
-        // safe-save data is in memory before the first chunk unpacks its scheduled ticks.
+        // 在 MinecraftServer.loadLevel 的 HEAD 处触发，即在 createLevels/prepareLevels 之前，
+        // 因此 safe-save 数据在第一个区块解包其计划刻之前就已进入内存。
         SafeSaveManager.onServerLoaded(server);
     }
 
@@ -49,10 +45,5 @@ public class CarpetServer implements CarpetExtension, ModInitializer {
         return Translations.getTranslationFromResourcePath(lang);
     }
 
-    @Override
-    public void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher,
-                                 CommandBuildContext commandBuildContext) {
-        DebugCommand.register(dispatcher);
-    }
 
 }

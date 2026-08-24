@@ -3,39 +3,36 @@ package com.carpet.safesave.safesave;
 import java.util.List;
 
 /**
- * Duck interface injected into {@code LevelChunkTicks}, giving safe-save direct control over a
- * chunk's tick container.
+ * 注入 {@code LevelChunkTicks} 的鸭子接口，让 safe-save 能直接控制区块的刻容器。
  *
- * <p>Deliberately wildcard-typed: the target class is generic ({@code LevelChunkTicks<T>}) and JVM
- * descriptors erase generics anyway, so keeping the interface non-generic avoids generic-mixin
- * friction while remaining type-correct at runtime (a block container only ever receives
- * {@code ScheduledTick<Block>} instances).
+ * <p>刻意使用通配符类型：目标类是泛型（{@code LevelChunkTicks<T>}），而 JVM 描述符本来就会擦除泛型，
+ * 因此保持接口非泛型可以避免泛型 mixin 的麻烦，同时运行时类型依然正确
+ * （方块容器只会收到 {@code ScheduledTick<Block>} 实例）。
  */
 public interface SafeTickContainer {
 
     /**
-     * @return {@code true} when this container still holds un-unpacked {@code pendingTicks}
-     *         (i.e. the chunk was read from disk but never reached {@code BLOCK_TICKING}).
-     *         Such chunks carry no absolute timing, so safe-save must not snapshot them.
+     * @return 当此容器仍持有未解包的 {@code pendingTicks}（即区块已从磁盘读取但从未达到
+     *         {@code BLOCK_TICKING}）时为 {@code true}。此类区块没有绝对时间，
+     *         safe-save 不得对其快照。
      */
     boolean SS$hasPendingTicks();
 
     /**
-     * Wipes the queue, the {@code (type,pos)} de-duplication set and any {@code pendingTicks}, then
-     * re-schedules exactly the supplied {@code ScheduledTick} instances.
+     * 清空队列、{@code (type,pos)} 去重集合以及任何 {@code pendingTicks}，然后重新调度恰好提供的
+     * {@code ScheduledTick} 实例。
      *
-     * <p>Wiping first is essential: {@code LevelChunkTicks.schedule} silently drops a tick whose
-     * {@code (type,pos)} pair is already present, so without the wipe the vanilla re-anchored ticks
-     * would win and the restore would be a no-op.
+     * <p>先清空是必须的：{@code LevelChunkTicks.schedule} 会静默丢弃 {@code (type,pos)} 已存在的刻，
+     * 因此不清空的话原版重新锚定的刻会胜出，恢复将毫无效果。
      *
-     * <p>Re-scheduling through the normal {@code schedule} path keeps the parent
-     * {@code LevelTicks.nextTickForContainer} cache coherent via the {@code onTickAdded} callback.
+     * <p>通过正常的 {@code schedule} 路径重新调度，可借助 {@code onTickAdded} 回调保持父级
+     * {@code LevelTicks.nextTickForContainer} 缓存的一致性。
      *
-     * @param scheduledTicks list of {@code ScheduledTick} carrying absolute
-     *                       {@code triggerTick}/{@code subTickOrder}
+     * @param scheduledTicks 携带绝对 {@code triggerTick}/{@code subTickOrder} 的
+     *                       {@code ScheduledTick} 列表
      */
     void SS$replaceAll(List<?> scheduledTicks);
 
-    /** Live {@code ScheduledTick} entries currently queued (absolute timing intact). */
+    /** 当前已排队的实时 {@code ScheduledTick} 条目（绝对时间完好）。 */
     List<?> SS$snapshotQueue();
 }

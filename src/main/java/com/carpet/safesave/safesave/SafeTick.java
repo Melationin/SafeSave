@@ -3,27 +3,26 @@ package com.carpet.safesave.safesave;
 import net.minecraft.nbt.CompoundTag;
 
 /**
- * One scheduled tick, captured with <em>absolute</em> timing so that a restart cannot perturb it.
+ * 一条计划刻，以<em>绝对</em>时间捕获，因此重启无法扰动它。
  *
- * <p>Vanilla stores {@code SavedTick(type, pos, int delay, priority)} inside the chunk NBT and
- * throws {@code subTickOrder} away. On load it re-anchors the delay against
- * <em>the game time at which the chunk starts block-ticking</em>, and re-numbers {@code subTickOrder}
- * as {@code -N..-1} <em>per chunk</em>. That loses (a) the absolute trigger time and (b) the global
- * ordering between chunks.
+ * <p>原版将 {@code SavedTick(type, pos, int delay, priority)} 存在区块 NBT 中，并丢弃
+ * {@code subTickOrder}。加载时它按 <em>区块开始方块刻时的游戏时间</em>重新锚定 delay，
+ * 并<em>按区块</em>把 {@code subTickOrder} 重新编号为 {@code -N..-1}。这丢失了 (a) 绝对触发时间
+ * 和 (b) 区块间的全局顺序。
  *
- * <p>This record therefore keeps the two fields vanilla drops:
+ * <p>因此本记录保留了原版丢弃的两个字段：
  * <ul>
- *   <li>{@link #triggerTick()} — the absolute game time the tick fires at, not a delay;</li>
- *   <li>{@link #subTickOrder()} — the original global insertion counter.</li>
+ *   <li>{@link #triggerTick()} —— 该刻触发的绝对游戏时间，而非延迟；</li>
+ *   <li>{@link #subTickOrder()} —— 原始的全局插入计数器。</li>
  * </ul>
  *
- * @param typeId       registry id of the {@code Block}/{@code Fluid} payload
- * @param x            block x
- * @param y            block y
- * @param z            block z
- * @param triggerTick  absolute game time at which this tick fires
- * @param priority     {@code TickPriority.getValue()} (-3..3)
- * @param subTickOrder original global {@code Level.subTickCount} value
+ * @param typeId       {@code Block}/{@code Fluid} 载荷的注册表 id
+ * @param x            方块的 x
+ * @param y            方块的 y
+ * @param z            方块的 z
+ * @param triggerTick  该刻触发的绝对游戏时间
+ * @param priority     {@code TickPriority.getValue()}（-3..3）
+ * @param subTickOrder 原始全局 {@code Level.subTickCount} 值
  */
 public record SafeTick(String typeId, int x, int y, int z, long triggerTick, int priority, long subTickOrder) {
 
@@ -31,10 +30,10 @@ public record SafeTick(String typeId, int x, int y, int z, long triggerTick, int
     private static final String KEY_X = "x";
     private static final String KEY_Y = "y";
     private static final String KEY_Z = "z";
-    /** absolute trigger tick — the whole point of this feature */
+    /** 绝对触发刻——本功能的核心所在 */
     private static final String KEY_TRIGGER = "tt";
     private static final String KEY_PRIORITY = "p";
-    /** global sub-tick order — the other thing vanilla loses */
+    /** 全局子刻顺序——原版丢失的另一项 */
     private static final String KEY_SUB_ORDER = "so";
 
     public CompoundTag save() {
@@ -50,7 +49,7 @@ public record SafeTick(String typeId, int x, int y, int z, long triggerTick, int
     }
 
     /**
-     * @return the parsed tick, or {@code null} when the entry is malformed (missing/blank id)
+     * @return 解析出的刻；当条目格式错误（id 缺失/为空）时为 {@code null}
      */
     public static SafeTick load(final CompoundTag tag) {
         String id = tag.getStringOr(KEY_ID, "");
