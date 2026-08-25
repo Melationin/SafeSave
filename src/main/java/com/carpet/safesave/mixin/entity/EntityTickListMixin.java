@@ -5,12 +5,10 @@ import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import com.carpet.safesave.safesave.entity.EntityTickListAccess;
 import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.entity.EntityTickList;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -43,7 +41,8 @@ public abstract class EntityTickListMixin implements EntityTickListAccess {
 
     /**
      * {@code add} 是所有实体进入 tick 列表的唯一入口：
-     * 新生成的实体在此分配序号；从 NBT 加载过（有序号）的实体记录其区块，等待区块内维护。
+     * 新生成的实体在此分配序号；从 NBT 加载的有序号实体不需要额外记录，
+     * 其所在区块会在非冻结 tick 开头由 {@code SafeSaveManager.rebuildNewChunks} 统一识别并重排。
      */
     @Inject(method = "add", at = @At("HEAD"))
     private void SS$onEntityAdded(final Entity entity, final CallbackInfo ci) {
@@ -52,13 +51,6 @@ public abstract class EntityTickListMixin implements EntityTickListAccess {
         }
         if (holder.SS$entityOrder() == Long.MIN_VALUE) {
             holder.SS$assignEntityOrder(EntityOrderManager.nextOrder());
-        } else if (entity.level() instanceof ServerLevel serverLevel) {
-            EntityOrderManager.markChunkDirty(dimensionId(serverLevel), entity.chunkPosition().pack());
         }
-    }
-
-    @Unique
-    private static String dimensionId(final ServerLevel level) {
-        return level.dimension().identifier().toString();
     }
 }

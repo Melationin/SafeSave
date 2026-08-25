@@ -277,8 +277,8 @@ public final class SafeSaveManager {
             return;
         }
         PistonManager.onLevelTickStart(level);
-        rebuildNewChunks(level);
-        EntityOrderManager.onLevelTickStart(level);
+        Set<Long> newChunks = rebuildNewChunks(level);
+        EntityOrderManager.rebuildChunks(level, newChunks);
     }
 
     /**
@@ -291,10 +291,12 @@ public final class SafeSaveManager {
      *
      * <p>冻结期间刻意<em>不</em>更新 {@link #knownChunks}：启动冻结或 {@code /tick freeze} 期间
      * 加载的区块，会在解冻后的第一个正常 tick 被统一视为新加载并恢复。
+     *
+     * @return 本 tick 实际重建的候选区块集合（可能为空），供实体顺序协调使用
      */
-    private static void rebuildNewChunks(final ServerLevel level) {
+    private static Set<Long> rebuildNewChunks(final ServerLevel level) {
         if (!level.tickRateManager().runsNormally()) {
-            return;
+            return Set.of();
         }
         String dimension = dimensionId(level);
         Set<Long> ready = ScheduledTickManager.collectReadyChunks(level);
@@ -356,6 +358,8 @@ public final class SafeSaveManager {
             DebugLog.info("{}: rebuild tick start - {} chunk(s) to rebuild ({} newly loaded); {} rebuilt, {} tick(s) restored so far, {} dropped",
                     dimension, candidates.size(), newKeys.size(), rebuilt, ScheduledTickManager.restoredCount(), ScheduledTickManager.droppedCount());
         }
+        // 返回“与上一非冻结 tick 相比新加载的区块”，供实体顺序按区块统一重排。
+        return newKeys;
     }
 
     // -------------------------------------------------------------- 保存路径
