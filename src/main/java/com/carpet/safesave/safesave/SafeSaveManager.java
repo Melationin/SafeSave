@@ -2,23 +2,36 @@ package com.carpet.safesave.safesave;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
+import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
 import com.carpet.safesave.safesave.blockentity.PistonManager;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
+import com.carpet.safesave.safesave.scheduled.SafeTick;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
+import com.carpet.safesave.safesave.scheduled.SafeTickContainer;
+import com.carpet.safesave.safesave.scheduled.TickContainerHolder;
 import com.carpet.safesave.rules.SafeSaveRules;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.storage.LevelResource;
+import net.minecraft.world.ticks.TickContainerAccess;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -47,6 +60,14 @@ public final class SafeSaveManager {
     /** 供 {@code /safesave status} 使用的诊断数据（从磁盘加载的计数）。 */
     private static int loadedTickCount;
     private static int loadedBlockEventCount;
+
+    /**
+     * 每个维度上次在<em>非冻结</em>世界刻开始时所观察到的已就绪区块集合。
+     *
+     * <p>每个正常 tick 都会把它替换为当刻的“已解包容器”集合；下一次 tick 时，当前集合比上次
+     * 多出的键就是新加载区块。冻结期间刻意不更新，解冻后会把冻结期间加载的区块一并重建。
+     */
+    private static final Map<String, Set<Long>> knownChunks = new HashMap<>();
 
     private SafeSaveManager() {
     }
@@ -110,6 +131,7 @@ public final class SafeSaveManager {
         BlockEventManager.init(store);
         PistonManager.reset();
         EntityOrderManager.reset();
+        knownChunks.clear();
         freezeArmed = true;
         loadedTickCount = 0;
         loadedBlockEventCount = 0;
@@ -215,7 +237,7 @@ public final class SafeSaveManager {
             }
             ScheduledTickManager.restoreSubTickCount(level, data);
             // 方块事件不再在 prepareLevels 一次性恢复：v4 起它们随区块快照，由
-            // 每个非冻结 tick 开头的新加载区块统一重建（ScheduledTickManager.onLevelTickStart）。
+            // 每个非冻结 tick 开头的新加载区块统一重建（SafeSaveManager.rebuildNewChunks）。
             // v2/v3 旧数据在 SafeSaveStore.load 中已经迁移进区块快照。
         }
     }
@@ -254,8 +276,79 @@ public final class SafeSaveManager {
             return;
         }
         PistonManager.onLevelTickStart(level);
-        ScheduledTickManager.onLevelTickStart(level);
+        rebuildNewChunks(level);
         EntityOrderManager.onLevelTickStart(level);
+    }
+
+    /**
+     * 每个<em>非冻结</em> tick 开头统一重建新加载区块的计划刻与方块事件。
+     *
+     * <p>判断“新加载”的方式是对比 {@code LevelTicks.allContainers}：每个正常 tick 记录当时
+     * 已就绪（已注册且已解包）的刻容器集合，下一次正常 tick 时，当前集合比上次多出的键就是
+     * 本 tick 新加载的区块。实际消费集合是 {@code ready ∩ pendingRestore}，新加载但没有恢复数据的
+     * 区块不会调用 {@code store.take}。
+     *
+     * <p>冻结期间刻意<em>不</em>更新 {@link #knownChunks}：启动冻结或 {@code /tick freeze} 期间
+     * 加载的区块，会在解冻后的第一个正常 tick 被统一视为新加载并恢复。
+     */
+    private static void rebuildNewChunks(final ServerLevel level) {
+        if (!level.tickRateManager().runsNormally()) {
+            return;
+        }
+        String dimension = dimensionId(level);
+        Set<Long> ready = ScheduledTickManager.collectReadyChunks(level);
+
+        // 第一个正常 tick 没有“上一次”可比较：视作已知集合为空，这样 prepareLevels 期间已经
+        // 加载好的区块也会在此时统一重建。
+        Set<Long> previous = knownChunks.get(dimension);
+        if (previous == null) {
+            previous = Set.of();
+        }
+        // 诊断用：ready 相对 previous 多出的键（新加载）。
+        Set<Long> newKeys = new HashSet<>(ready);
+        newKeys.removeAll(previous);
+
+        SafeSaveStore.DimensionData data = store.dimensionOrNull(dimension);
+        Set<Long> candidates = new HashSet<>();
+        if (data != null) {
+            // 只处理“已就绪且处于待恢复队列”的区块。newKeys 负责识别新加载，
+            // 而 ready ∩ pendingRestore 额外兜底“卸载→重载发生在两个正常 tick 之间、未从 previous 消失”的边界。
+            for (Long boxed : ready) {
+                if (data.pendingRestore.contains(boxed)) {
+                    candidates.add(boxed);
+                }
+            }
+        }
+
+        Long2ObjectMap<?> blockContainers = ((TickContainerHolder) level.getBlockTicks()).SS$containers();
+        Long2ObjectMap<?> fluidContainers = ((TickContainerHolder) level.getFluidTicks()).SS$containers();
+        List<SafeBlockEvent> blockEventsToRestore = new ArrayList<>();
+        int rebuilt = 0;
+        for (Long boxed : candidates) {
+            long key = boxed;
+            Object block = blockContainers.get(key);
+            Object fluid = fluidContainers.get(key);
+            if (!(block instanceof SafeTickContainer) || !(fluid instanceof SafeTickContainer)) {
+                continue;
+            }
+            SafeSaveStore.ChunkSnapshot snapshot = ScheduledTickManager.restoreChunkTicks(
+                    level, key, block, fluid);
+            if (snapshot != null) {
+                rebuilt++;
+                blockEventsToRestore.addAll(snapshot.blockEvents());
+            }
+        }
+        // 同一个正常 tick 重建的所有区块，其方块事件一起按全局顺序合并回世界队列。
+        if (!blockEventsToRestore.isEmpty()) {
+            BlockEventManager.restoreChunkEvents(level, blockEventsToRestore);
+        }
+
+        // 只记录“就绪”的区块；尚未解包的区块会在下个正常 tick 重新进入 newKeys。
+        knownChunks.put(dimension, ready);
+        if (!candidates.isEmpty()) {
+            DebugLog.info("{}: rebuild tick start - {} chunk(s) to rebuild ({} newly loaded); {} rebuilt, {} tick(s) restored so far, {} dropped",
+                    dimension, candidates.size(), newKeys.size(), rebuilt, ScheduledTickManager.restoredCount(), ScheduledTickManager.droppedCount());
+        }
     }
 
     // -------------------------------------------------------------- 保存路径
@@ -273,12 +366,10 @@ public final class SafeSaveManager {
         }
         int chunks = 0;
         for (ServerLevel level : server.getAllLevels()) {
-            chunks += ScheduledTickManager.snapshotLevel(level);
+            chunks += snapshotLevel(level);
             SafeSaveStore.DimensionData data = store.dimension(dimensionId(level));
             data.subTickCount = level.subTickCount;
             data.gameTime = level.getGameTime(); // 仅调试用
-            // 方块事件快照在 ScheduledTickManager.snapshotLevel 内部逐区块完成；
-            // 旧世界级迁移残余已在 SafeSaveStore.load 消费，v4 不再调用 BlockEventManager.snapshot。
             Path file = dimensionDataDir(level).resolve(FILE_NAME);
 
             if (data.totalTicks() == 0 && data.totalBlockEvents() == 0) {
@@ -295,6 +386,67 @@ public final class SafeSaveManager {
         store.setServerTickCount(server.getTickCount()); // 仅调试用
         DebugLog.info("saved {} scheduled tick(s) over {} loaded chunk(s) + {} block event(s) to per-dimension data/ files",
                 store.totalTicks(), chunks, store.totalBlockEvents());
+    }
+
+    /**
+     * 卸载路径：区块的刻容器仍注册在世界中时，统一捕获计划刻与方块事件。
+     *
+     * <p>写入成功后把该区块加入 {@code pendingRestore}，使同会话内重新加载的区块
+     * 也会在后续正常 tick 开头被统一重建。
+     */
+    public static void snapshotChunk(final ServerLevel level, final LevelChunk chunk) {
+        if (!enabled() || store == null) {
+            return;
+        }
+        if (!(chunk.getBlockTicks() instanceof SafeTickContainer)
+                || !(chunk.getFluidTicks() instanceof SafeTickContainer)) {
+            return;
+        }
+        long key = chunk.getPos().pack();
+        @SuppressWarnings("unchecked")
+        TickContainerAccess<net.minecraft.world.level.block.Block> blockAccess =
+                (TickContainerAccess<net.minecraft.world.level.block.Block>) chunk.getBlockTicks();
+        @SuppressWarnings("unchecked")
+        TickContainerAccess<net.minecraft.world.level.material.Fluid> fluidAccess =
+                (TickContainerAccess<net.minecraft.world.level.material.Fluid>) chunk.getFluidTicks();
+        ScheduledTickManager.ChunkTickSnapshot ticks = ScheduledTickManager.snapshotChunkTicks(level, key, blockAccess, fluidAccess);
+        if (ticks == null) {
+            return;
+        }
+        List<SafeBlockEvent> events = BlockEventManager.snapshotChunkEvents(level, key);
+        store.put(dimensionId(level), key, new SafeSaveStore.ChunkSnapshot(
+                ticks.blockTicks(), ticks.fluidTicks(), events));
+        store.dimension(dimensionId(level)).pendingRestore.add(key);
+    }
+
+    /**
+     * 快照一个维度所有已加载区块：把计划刻与方块事件按区块合并后写入存储。
+     *
+     * <p>全量保存路径不加 {@code pendingRestore}，避免把本次保存快照误当成“待恢复”。
+     *
+     * @return 快照的区块数
+     */
+    private static int snapshotLevel(final ServerLevel level) {
+        Map<Long, ScheduledTickManager.ChunkTickSnapshot> ticksByChunk = ScheduledTickManager.snapshotLevelTicks(level);
+        Map<Long, List<SafeBlockEvent>> eventsByChunk = BlockEventManager.snapshotByChunk(level);
+
+        Set<Long> keys = new HashSet<>(ticksByChunk.keySet());
+        keys.addAll(eventsByChunk.keySet());
+        int count = 0;
+        for (Long boxed : keys) {
+            long key = boxed;
+            ScheduledTickManager.ChunkTickSnapshot ticks = ticksByChunk.get(key);
+            List<SafeBlockEvent> events = eventsByChunk.getOrDefault(key, List.of());
+            if ((ticks == null || ticks.isEmpty()) && events.isEmpty()) {
+                continue;
+            }
+            store.put(dimensionId(level), key, new SafeSaveStore.ChunkSnapshot(
+                    ticks == null ? List.of() : ticks.blockTicks(),
+                    ticks == null ? List.of() : ticks.fluidTicks(),
+                    events));
+            count++;
+        }
+        return count;
     }
 
     /** 原子写入：先写临时文件再移动，崩溃不会留下半截文件。 */

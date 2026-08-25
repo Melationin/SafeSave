@@ -3,7 +3,6 @@ package com.carpet.safesave.mixin;
 import com.carpet.safesave.safesave.SafeSaveManager;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.entity.ServerLevelTickListAccess;
-import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.BlockEventData;
@@ -51,10 +50,10 @@ public abstract class ServerLevelMixin implements ServerLevelTickListAccess {
 
     /**
      * {@code ServerLevel.unload} 的 HEAD：区块的刻容器仍注册在世界中的最后时刻，
-     * 可在它们被移除之前捕获绝对时间与属于该区块的方块事件。
+     * 由 {@link SafeSaveManager} 统一捕获计划刻与方块事件。
      */
     @Inject(method = "unload", at = @At("HEAD"))
     private void SS$onChunkUnload(final LevelChunk levelChunk, final CallbackInfo ci) {
-        ScheduledTickManager.snapshotChunk((ServerLevel) (Object) this, levelChunk);
+        SafeSaveManager.snapshotChunk((ServerLevel) (Object) this, levelChunk);
     }
 }
