@@ -10,6 +10,8 @@ import com.carpet.safesave.safesave.chunk.ChunkNbtBridge;
 import com.carpet.safesave.safesave.chunk.ChunkRebuildCoordinator;
 import com.carpet.safesave.safesave.blockentity.PistonManager;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
+import com.carpet.safesave.safesave.region.ProtectedRegionCodec;
+import com.carpet.safesave.safesave.region.ProtectedRegionManager;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -44,6 +46,11 @@ public final class SafeSaveManager {
 
     public static boolean enabled() {
         return SafeSaveRules.safeSave;
+    }
+
+    /** safeSave 或 ProtectedRegion 任一开启时，会话与旁置文件都需要工作。 */
+    public static boolean shouldRun() {
+        return SafeSaveRules.safeSave || SafeSaveRules.safeSaveRegions;
     }
 
     public static SafeSaveStore store() {
@@ -99,7 +106,7 @@ public final class SafeSaveManager {
      * {@code createLevels}/{@code prepareLevels}）处调用：绑定会话并读取旁置元数据；冻结在首刻前由 {@link #onFirstServerTick} 执行。
      */
     public static void onServerLoaded(final MinecraftServer server) {
-        if (!enabled()) {
+        if (!shouldRun()) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.begin();
@@ -114,7 +121,7 @@ public final class SafeSaveManager {
      * {@code Level.subTickCount}。此时 {@code createLevels} 已完成，但任何区块尚未准备好刻。
      */
     public static void onLevelsCreated(final MinecraftServer server) {
-        if (!enabled()) {
+        if (!shouldRun()) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.current();
@@ -124,7 +131,14 @@ public final class SafeSaveManager {
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveStore.DimensionData data = session.store.dimensionOrNull(dimensionId(level));
             if (data != null) {
-                ScheduledTickManager.restoreSubTickCount(level, data);
+                if (enabled()) {
+                    ScheduledTickManager.restoreSubTickCount(level, data);
+                }
+                if (data.regions != null && !data.regions.isEmpty()) {
+                    SafeSaveLevelAccess.of(level).protectedRegions.byName.putAll(
+                            ProtectedRegionCodec.load(data.regions));
+                    SafeSaveLevelAccess.of(level).protectedRegions.reindex();
+                }
             }
         }
     }
@@ -142,9 +156,17 @@ public final class SafeSaveManager {
         if (!enabled()) {
             return;
         }
-        server.tickRateManager().setFrozen(true);
-        DebugLog.info("froze the server before its first tick. "
-                + "Run '/tick unfreeze' once you are happy with the restored state.");
+        String mode = SafeSaveRules.safeSaveUnfreeze;
+        if ("manual".equals(mode)) {
+            server.tickRateManager().setFrozen(true);
+            DebugLog.info("froze the server before its first tick. "
+                    + "Run '/tick unfreeze' once you are happy with the restored state.");
+        } else if ("no_freeze".equals(mode)) {
+            DebugLog.info("safeSave unfreeze mode = no_freeze; the server will not be frozen on startup.");
+        } else {
+            // "region" 模式后续实现：冻结到所有 ProtectedRegion 完整为止再自动解冻。
+            DebugLog.info("safeSave unfreeze mode = region (not implemented yet); behaving like no_freeze.");
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -209,7 +231,7 @@ public final class SafeSaveManager {
      * 新加载区块的计划刻/方块事件，并协调活塞代数与实体顺序。
      */
     public static void onLevelTickStart(final ServerLevel level) {
-        if (!enabled()) {
+        if (!shouldRun()) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.current();
@@ -217,6 +239,12 @@ public final class SafeSaveManager {
             return;
         }
         SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
+        // ProtectedRegion 完整性评估每个世界刻 HEAD 都运行（包括全局冻结期间），
+        // 这样 /tick freeze 期间加载好区块后 region 状态也能跟上。
+        ProtectedRegionManager.tick(level, session, levelState);
+        if (!enabled()) {
+            return;
+        }
         // 活塞刻顺序重建必须在冻结期间也运行：ServerLevel.tick 本身不受 tickRateManager 门控，
         // 而 PME loadAdditional 发生在区块加载时（可能早于第一个非冻结 tick）。
         PistonManager.onLevelTickStart(level, session, levelState);
@@ -231,7 +259,7 @@ public final class SafeSaveManager {
      * 在 {@code MinecraftServer.saveAllChunks} 的 HEAD 处调用：写世界级旁置元数据。
      */
     public static void saveAll(final MinecraftServer server) {
-        if (!enabled()) {
+        if (!shouldRun()) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.current();
@@ -246,7 +274,7 @@ public final class SafeSaveManager {
      * 关闭后会话保留（不得 clear），因为原版在 onServerClosed 之后还会保存一次。
      */
     public static void onServerClosed(final MinecraftServer server) {
-        if (!enabled()) {
+        if (!shouldRun()) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.current();

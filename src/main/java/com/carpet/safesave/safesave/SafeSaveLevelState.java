@@ -1,5 +1,6 @@
 package com.carpet.safesave.safesave;
 
+import com.carpet.safesave.safesave.region.ProtectedRegionState;
 import com.carpet.safesave.util.OrderSequence;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -42,4 +43,7 @@ public final class SafeSaveLevelState {
 
     /** 实体 tick 序号（per-Level：实体的 {@code level()} 始终可用）。 */
     public final OrderSequence entityOrder = new OrderSequence();
+
+    /** ProtectedRegion 定义与冻结状态（per-Level）。 */
+    public final ProtectedRegionState protectedRegions = new ProtectedRegionState();
 }

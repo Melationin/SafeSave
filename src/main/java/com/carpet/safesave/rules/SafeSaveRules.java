@@ -3,6 +3,7 @@ package com.carpet.safesave.rules;
 import carpet.api.settings.Rule;
 
 import static carpet.api.settings.RuleCategory.FEATURE;
+
 public class SafeSaveRules {
 
     /**
@@ -14,4 +15,23 @@ public class SafeSaveRules {
      */
     @Rule(categories = { FEATURE})
     public static boolean safeSave = false;
+
+    /**
+     * ProtectedRegion 功能总开关：开启后，定义的 region 才会按“全部区块可 tick 才一起 tick，
+     * 缺一个区块就整 region 冻结”执行。
+     */
+    @Rule(categories = { FEATURE})
+    public static boolean safeSaveRegions = false;
+
+    /**
+     * 启动冻结策略。
+     *
+     * <ul>
+     *   <li>{@code no_freeze}：不冻结，SafeSave 数据在第一个正常 tick 用快照自带时间戳顺延恢复；</li>
+     *   <li>{@code manual}：冻结一次，玩家确认后 {@code /tick unfreeze} 手动解冻（原行为）；</li>
+     *   <li>{@code region}：根据 ProtectedRegion 解冻（预留，暂未实现）。</li>
+     * </ul>
+     */
+    @Rule(categories = { FEATURE}, options = {"no_freeze", "manual", "region"})
+    public static String safeSaveUnfreeze = "manual";
 }

@@ -1,9 +1,12 @@
 package com.carpet.safesave.mixin.entity;
 
+import com.carpet.safesave.safesave.region.ProtectedRegionManager;
 import com.carpet.safesave.util.SafeSaveNbt;
 import com.carpet.safesave.safesave.entity.EntityOrderHolder;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.storage.ValueInput;
@@ -36,6 +39,19 @@ public abstract class EntityMixin implements EntityOrderHolder
     @Override
     public void SS$assignEntityOrder(final long order) {
         this.SS$entityOrder = order;
+    }
+
+    /**
+     * ProtectedRegion 门控：冻结 region 里的非玩家实体不参与 despawn 判定。
+     */
+    @Inject(method = "checkDespawn", at = @At("HEAD"), cancellable = true)
+    private void SS$gateCheckDespawn(final CallbackInfo ci) {
+        Entity self = (Entity) (Object) this;
+        if (!(self instanceof ServerPlayer)
+                && self.level() instanceof ServerLevel serverLevel
+                && ProtectedRegionManager.isChunkFrozen(serverLevel, self.chunkPosition().pack())) {
+            ci.cancel();
+        }
     }
 
     @Shadow

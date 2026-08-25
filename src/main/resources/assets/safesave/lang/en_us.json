@@ -3,5 +3,9 @@
   "carpet.rule.exampleFeature.name": "Example Feature",
   "carpet.rule.exampleFeature.desc": "A simple example Carpet rule.",
   "carpet.rule.safeSave.name": "Safe Save",
-  "carpet.rule.safeSave.desc": "Persist scheduled ticks and block events losslessly across a restart. Absolute triggerTick, global subTickOrder, Level.subTickCount and the ordered block-event queue are stored in <world>/safesave.dat. The server freezes before its first tick so the restored state can be inspected; run '/tick unfreeze' to resume."
+  "carpet.rule.safeSave.desc": "Persist scheduled ticks and block events losslessly across a restart. Absolute triggerTick, global subTickOrder, Level.subTickCount and the ordered block-event queue are stored in <world>/safesave.dat. The server freezes before its first tick so the restored state can be inspected; run '/tick unfreeze' to resume.",
+  "carpet.rule.safeSaveRegions.name": "SafeSave Protected Regions",
+  "carpet.rule.safeSaveRegions.desc": "Enable ProtectedRegion tick synchronization. A region only ticks when all of its chunks are tickable; otherwise the entire region freezes.",
+  "carpet.rule.safeSaveUnfreeze.name": "SafeSave Unfreeze Mode",
+  "carpet.rule.safeSaveUnfreeze.desc": "Startup freeze strategy: no_freeze (never freeze), manual (freeze once, /tick unfreeze), region (unfreeze by ProtectedRegion, reserved)."
 }

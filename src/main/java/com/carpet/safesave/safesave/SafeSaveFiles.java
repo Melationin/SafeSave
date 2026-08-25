@@ -3,6 +3,7 @@ package com.carpet.safesave.safesave;
 import static com.carpet.safesave.util.DimensionIds.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
+import com.carpet.safesave.safesave.region.ProtectedRegionCodec;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
@@ -109,9 +110,14 @@ public final class SafeSaveFiles {
             return;
         }
         for (ServerLevel level : server.getAllLevels()) {
+            SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
             SafeSaveStore.DimensionData data = session.store.dimension(dimensionId(level));
             data.subTickCount = level.subTickCount;
             data.gameTime = level.getGameTime(); // 仅调试用
+            data.regions = ProtectedRegionCodec.save(state.protectedRegions.byName);
+            if (data.regions.isEmpty()) {
+                data.regions = null;
+            }
             Path file = dimensionDataDir(level).resolve(FILE_NAME);
             write(file, session.store.saveDimension(dimensionId(level), data));
         }

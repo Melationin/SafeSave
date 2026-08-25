@@ -8,6 +8,7 @@ import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
+import com.carpet.safesave.safesave.region.ProtectedRegionManager;
 import com.carpet.safesave.safesave.scheduled.SafeTickContainer;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import com.carpet.safesave.safesave.scheduled.TickContainers;
@@ -54,18 +55,28 @@ public final class ChunkRebuildCoordinator {
         String dimension = dimensionId(level);
         LongSet ready = TickContainers.collectReadyChunks(level);
 
+        // ProtectedRegion 冻结中的区块刻意不参与重建：不消费 pending、不进入 knownChunks、
+        // 不参与实体顺序重排。region 解冻的那一刻它们会重新作为“新加载”出现，与 region 内
+        // 其他区块一起重建（计划刻/方块事件/实体顺序一起恢复）。
+        LongOpenHashSet readyNonFrozen = new LongOpenHashSet(ready.size());
+        for (long key : ready) {
+            if (!ProtectedRegionManager.isChunkFrozen(level, key)) {
+                readyNonFrozen.add(key);
+            }
+        }
+
         // 第一个正常 tick 没有“上一次”可比较：视作已知集合为空，这样 prepareLevels 期间已经
         // 加载好的区块也会在此时统一重建。
         LongSet previous = levelState.knownChunks;
         // 诊断用：ready 相对 previous 多出的键（新加载）。
-        LongOpenHashSet newKeys = new LongOpenHashSet(ready.size());
-        newKeys.addAll(ready);
+        LongOpenHashSet newKeys = new LongOpenHashSet(readyNonFrozen.size());
+        newKeys.addAll(readyNonFrozen);
         newKeys.removeAll(previous);
 
         LongOpenHashSet candidates = new LongOpenHashSet();
         // 只处理“已就绪且处于待恢复映射”的区块。newKeys 负责识别新加载，
         // 而 ready ∩ pending 额外兜底“卸载→重载发生在两个正常 tick 之间、未从 previous 消失”的边界。
-        for (long boxed : ready) {
+        for (long boxed : readyNonFrozen) {
             if (levelState.pendingChunks.containsKey(boxed)) {
                 candidates.add(boxed);
             }
@@ -94,8 +105,9 @@ public final class ChunkRebuildCoordinator {
             BlockEventManager.restoreChunkEvents(level, blockEventsToRestore, session, levelState);
         }
 
-        // 只记录“就绪”的区块；尚未解包的区块会在下个正常 tick 重新进入 newKeys。
-        levelState.knownChunks = ready;
+        // 只记录“就绪且未被 region 冻结”的区块；冻结区块与尚未解包的区块都会在
+        // 后续正常 tick 重新进入 newKeys。
+        levelState.knownChunks = readyNonFrozen;
         if (!candidates.isEmpty()) {
             DebugLog.info("{}: rebuild tick start - {} chunk(s) to rebuild ({} newly loaded); {} rebuilt, {} tick(s) restored so far, {} dropped",
                     dimension, candidates.size(), newKeys.size(), rebuilt,

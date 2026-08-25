@@ -38,6 +38,7 @@ public final class SafeSaveStore {
     private static final String KEY_DEBUG_GAME_TIME = "gameTime";
     private static final String KEY_DIMENSION = "dimension";
     private static final String KEY_SUB_TICK_COUNT = "subTickCount";
+    private static final String KEY_REGIONS = "regions";
 
     /** 区块 NBT 内 {@code safeSave} 子节点里的键。 */
     private static final String KEY_BLOCK_TICKS = "block";
@@ -81,6 +82,8 @@ public final class SafeSaveStore {
         public long subTickCount = -1L;
         /** 仅调试用——从不用于恢复刻 */
         public long gameTime = Long.MIN_VALUE;
+        /** ProtectedRegion 定义的<em>不透明</em> NBT 列表；编解码在 {@code ProtectedRegionCodec}。 */
+        public ListTag regions;
     }
 
     private final Map<String, DimensionData> dimensions = new LinkedHashMap<>();
@@ -187,6 +190,9 @@ public final class SafeSaveStore {
             // 仅调试用
             levelTag.putLong(KEY_DEBUG_GAME_TIME, data.gameTime);
         }
+        if (data.regions != null && !data.regions.isEmpty()) {
+            levelTag.put(KEY_REGIONS, data.regions);
+        }
 
         ListTag levels = new ListTag();
         levels.add(levelTag);
@@ -217,6 +223,8 @@ public final class SafeSaveStore {
                 DimensionData data = store.dimension(dimensionId);
                 data.subTickCount = levelTag.getLongOr(KEY_SUB_TICK_COUNT, -1L);
                 data.gameTime = levelTag.getLongOr(KEY_DEBUG_GAME_TIME, Long.MIN_VALUE);
+                ListTag regions = levelTag.getListOrEmpty(KEY_REGIONS);
+                data.regions = regions.isEmpty() ? null : regions;
             });
         }
         return store;

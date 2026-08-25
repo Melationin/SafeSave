@@ -3,5 +3,9 @@
   "carpet.rule.exampleFeature.name": "示例功能",
   "carpet.rule.exampleFeature.desc": "一个简单的 Carpet 规则示例。",
   "carpet.rule.safeSave.name": "安全保存",
-  "carpet.rule.safeSave.desc": "重启后无损恢复计划刻与方块事件：把绝对 triggerTick、全局 subTickOrder、Level.subTickCount 以及有序的方块事件队列存入 <world>/safesave.dat。服务器会在第一次 tick 前 freeze 以便检查恢复结果，确认后用 '/tick unfreeze' 继续。"
+  "carpet.rule.safeSave.desc": "重启后无损恢复计划刻与方块事件：把绝对 triggerTick、全局 subTickOrder、Level.subTickCount 以及有序的方块事件队列存入 <world>/safesave.dat。服务器会在第一次 tick 前 freeze 以便检查恢复结果，确认后用 '/tick unfreeze' 继续。",
+  "carpet.rule.safeSaveRegions.name": "安全保存保护区",
+  "carpet.rule.safeSaveRegions.desc": "启用 ProtectedRegion 同步：一个区域只有在其全部区块都可 tick 时才整体 tick，任一区块不可 tick 就冻结整个区域。",
+  "carpet.rule.safeSaveUnfreeze.name": "安全保存解冻模式",
+  "carpet.rule.safeSaveUnfreeze.desc": "启动冻结策略：no_freeze（不冻结）、manual（冻结一次，/tick unfreeze 手动解冻）、region（按 ProtectedRegion 解冻，预留）。"
 }
