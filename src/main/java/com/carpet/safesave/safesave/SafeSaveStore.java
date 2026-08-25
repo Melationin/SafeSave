@@ -1,4 +1,5 @@
 package com.carpet.safesave.safesave;
+import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
 import com.carpet.safesave.safesave.scheduled.SafeTick;
 
@@ -10,9 +11,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.Set;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 绝对计划刻数据的内存权威存储，及其 NBT 形式。
@@ -28,11 +29,11 @@ import java.util.Map;
 public final class SafeSaveStore {
 
     /**
-     * 当前磁盘布局。v1 = 仅计划刻；v2 增加有序方块事件队列；
-     * v3 增加持有移动活塞的区块集合。
-     * 旧版本仍可读取（{@link #MIN_READABLE_VERSION}），只是不包含方块事件。
+     * 当前磁盘布局。v1 = 仅计划刻；v2 增加世界级有序方块事件队列；
+     * v3 增加持有移动活塞的区块集合；v4 将方块事件改为<em>按区块</em>保存并增加全局顺序号。
+     * 旧版本仍可读取（{@link #MIN_READABLE_VERSION}）；v4 读取 v2/v3 时会把世界级队列迁移进区块快照。
      */
-    public static final int FORMAT_VERSION = 3;
+    public static final int FORMAT_VERSION = 4;
 
     /** 此构建仍可读取的最旧布局。 */
     public static final int MIN_READABLE_VERSION = 1;
@@ -49,17 +50,29 @@ public final class SafeSaveStore {
     private static final String KEY_CHUNK_Z = "z";
     private static final String KEY_BLOCK_TICKS = "block";
     private static final String KEY_FLUID_TICKS = "fluid";
-    /** 待处理方块事件的有序队列（v2+） */
+    /** 旧版（v2/v3）的待处理方块事件有序队列 */
     private static final String KEY_BLOCK_EVENTS = "block_events";
+    /** v4+ 每区块的方块事件列表，按全局 {@code order} 升序 */
+    private static final String KEY_CHUNK_BLOCK_EVENTS = "block_events";
 
-    /** 每区块的绝对刻列表。列表按取出顺序存储，纯粹为了可读性。 */
-    public record ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks) {
+    /** 每区块的绝对刻列表 + 该区块的方块事件列表。列表按取出顺序/全局顺序存储。 */
+    public record ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks, List<SafeBlockEvent> blockEvents) {
+        public ChunkSnapshot {
+            blockTicks = List.copyOf(blockTicks);
+            fluidTicks = List.copyOf(fluidTicks);
+            blockEvents = List.copyOf(blockEvents);
+        }
+
+        public ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks) {
+            this(blockTicks, fluidTicks, List.of());
+        }
+
         public boolean isEmpty() {
-            return this.blockTicks.isEmpty() && this.fluidTicks.isEmpty();
+            return this.blockTicks.isEmpty() && this.fluidTicks.isEmpty() && this.blockEvents.isEmpty();
         }
 
         public int total() {
-            return this.blockTicks.size() + this.fluidTicks.size();
+            return this.blockTicks.size() + this.fluidTicks.size() + this.blockEvents.size();
         }
     }
 
@@ -75,13 +88,16 @@ public final class SafeSaveStore {
          * 但会重复计数并模糊语义。永不持久化。
          */
         public final Set<Long> pendingRestore = new LinkedHashSet<>();
-        /** 当 {@link #blockEvents} 仍持有未应用的磁盘数据时为 {@code true}。 */
+        /**
+         * 尚未消费的<em>旧世界级</em>方块事件（仅 v2/v3 磁盘数据迁移用）。
+         * 新格式下事件按区块存放在 {@link #chunks} 中，本字段在 v4 启动读取后保持为空。
+         */
         public boolean blockEventsPendingRestore;
         /** 保存时的 {@code Level.subTickCount}；{@code -1} = 未知 */
         public long subTickCount = -1L;
         /**
-         * 待处理的方块事件，<strong>按取出顺序</strong>。世界级而非区块级，因为
-         * {@code ServerLevel.blockEvents} 是单一的世界级队列。
+         * 旧版（v2/v3）的世界级方块事件队列，按取出顺序。仅供读取旧文件时迁移；
+         * v4 不再向此列表写入新事件。
          */
         public final List<SafeBlockEvent> blockEvents = new ArrayList<>();
         /** 仅调试用——从不用于恢复刻 */
@@ -91,6 +107,33 @@ public final class SafeSaveStore {
             int total = 0;
             for (ChunkSnapshot snapshot : this.chunks.values()) {
                 total += snapshot.total();
+            }
+            return total;
+        }
+
+        /** 仅计划刻/流体刻数量（不含方块事件）。 */
+        public int totalScheduledTicks() {
+            int total = 0;
+            for (ChunkSnapshot snapshot : this.chunks.values()) {
+                total += snapshot.blockTicks().size() + snapshot.fluidTicks().size();
+            }
+            return total;
+        }
+
+        /** 该维度所有条目数（含方块事件）。 */
+        public int totalStoredEntries() {
+            int total = 0;
+            for (ChunkSnapshot snapshot : this.chunks.values()) {
+                total += snapshot.total();
+            }
+            return total + this.blockEvents.size();
+        }
+
+        /** 该维度所有方块事件数量（包括旧迁移残余列表）。 */
+        public int totalBlockEvents() {
+            int total = this.blockEvents.size();
+            for (ChunkSnapshot snapshot : this.chunks.values()) {
+                total += snapshot.blockEvents().size();
             }
             return total;
         }
@@ -129,6 +172,15 @@ public final class SafeSaveStore {
     public int totalBlockEvents() {
         int total = 0;
         for (DimensionData data : this.dimensions.values()) {
+            total += data.totalBlockEvents();
+        }
+        return total;
+    }
+
+    /** 旧世界级迁移残余数量；正常 v4 生命周期为 0。 */
+    public int legacyBlockEventsCount() {
+        int total = 0;
+        for (DimensionData data : this.dimensions.values()) {
             total += data.blockEvents.size();
         }
         return total;
@@ -137,7 +189,16 @@ public final class SafeSaveStore {
     public int totalTicks() {
         int total = 0;
         for (DimensionData data : this.dimensions.values()) {
-            total += data.totalTicks();
+            total += data.totalScheduledTicks();
+        }
+        return total;
+    }
+
+    /** 含方块事件的总数（诊断用）。 */
+    public int totalStoredEntries() {
+        int total = 0;
+        for (DimensionData data : this.dimensions.values()) {
+            total += data.totalStoredEntries();
         }
         return total;
     }
@@ -203,10 +264,15 @@ public final class SafeSaveStore {
             if (!snapshot.fluidTicks().isEmpty()) {
                 chunkTag.put(KEY_FLUID_TICKS, saveTicks(snapshot.fluidTicks()));
             }
+            if (!snapshot.blockEvents().isEmpty()) {
+                chunkTag.put(KEY_CHUNK_BLOCK_EVENTS, saveBlockEvents(snapshot.blockEvents()));
+            }
             chunks.add(chunkTag);
         }
         levelTag.put(KEY_CHUNKS, chunks);
 
+        // v2/v3 旧世界级队列不再写入。若内存中仍有（例如旧迁移尚未消费的残量），也一并保留到文件里，
+        // 但正常 v4 生命周期中该列表为空。
         if (!data.blockEvents.isEmpty()) {
             ListTag events = new ListTag();
             for (SafeBlockEvent event : data.blockEvents) {
@@ -226,6 +292,14 @@ public final class SafeSaveStore {
         ListTag list = new ListTag();
         for (SafeTick tick : ticks) {
             list.add(tick.save());
+        }
+        return list;
+    }
+
+    private static ListTag saveBlockEvents(final List<SafeBlockEvent> events) {
+        ListTag list = new ListTag();
+        for (SafeBlockEvent event : events) {
+            list.add(event.save());
         }
         return list;
     }
@@ -253,15 +327,18 @@ public final class SafeSaveStore {
                 data.subTickCount = levelTag.getLongOr(KEY_SUB_TICK_COUNT, -1L);
                 data.gameTime = levelTag.getLongOr(KEY_DEBUG_GAME_TIME, Long.MIN_VALUE);
 
-                ListTag events = levelTag.getListOrEmpty(KEY_BLOCK_EVENTS);
-                for (int e = 0; e < events.size(); e++) {
-                    events.getCompound(e).ifPresent(eventTag -> {
-                        SafeBlockEvent event = SafeBlockEvent.load(eventTag);
-                        if (event != null) {
-                            data.blockEvents.add(event);
-                            data.blockEventsPendingRestore = true;
-                        }
-                    });
+                // v2/v3：先读旧世界级队列；v4 新文件通常没有这个键。旧事件迁移到区块快照，见下方 chunks。
+                ListTag oldEvents = levelTag.getListOrEmpty(KEY_BLOCK_EVENTS);
+                if (!oldEvents.isEmpty()) {
+                    for (int e = 0; e < oldEvents.size(); e++) {
+                        oldEvents.getCompound(e).ifPresent(eventTag -> {
+                            SafeBlockEvent event = SafeBlockEvent.load(eventTag);
+                            if (event != null) {
+                                data.blockEvents.add(event);
+                                data.blockEventsPendingRestore = true;
+                            }
+                        });
+                    }
                 }
 
                 ListTag chunks = levelTag.getListOrEmpty(KEY_CHUNKS);
@@ -272,11 +349,44 @@ public final class SafeSaveStore {
                                 chunkTag.getIntOr(KEY_CHUNK_Z, 0));
                         List<SafeTick> blockTicks = loadTicks(chunkTag.getListOrEmpty(KEY_BLOCK_TICKS));
                         List<SafeTick> fluidTicks = loadTicks(chunkTag.getListOrEmpty(KEY_FLUID_TICKS));
-                        if (!blockTicks.isEmpty() || !fluidTicks.isEmpty()) {
-                            data.chunks.put(packed, new ChunkSnapshot(blockTicks, fluidTicks));
+                        List<SafeBlockEvent> chunkEvents = loadBlockEvents(chunkTag.getListOrEmpty(KEY_CHUNK_BLOCK_EVENTS));
+                        if (!blockTicks.isEmpty() || !fluidTicks.isEmpty() || !chunkEvents.isEmpty()) {
+                            data.chunks.put(packed, new ChunkSnapshot(blockTicks, fluidTicks, chunkEvents));
                             data.pendingRestore.add(packed);
                         }
                     });
+                }
+
+                // v4 迁移：旧世界级队列（order=-1）按其原有顺序补全局序号，并入各自区块快照。
+                // 这些区块已经加入 pendingRestore（若原本只有事件、没有计划刻，上面的循环也会加入）。
+                if (data.blockEventsPendingRestore && !data.blockEvents.isEmpty()) {
+                    long order = 0;
+                    Map<Long, List<SafeBlockEvent>> byChunk = new HashMap<>();
+                    for (SafeBlockEvent event : data.blockEvents) {
+                        long packed = ChunkPos.pack(
+                                event.x() >> 4,
+                                event.z() >> 4);
+                        long effectiveOrder = event.order() >= 0 ? event.order() : order;
+                        order++;
+                        byChunk.computeIfAbsent(packed, k -> new ArrayList<>())
+                                .add(new SafeBlockEvent(
+                                        event.blockId(), event.x(), event.y(), event.z(),
+                                        event.paramA(), event.paramB(), effectiveOrder));
+                    }
+                    for (Map.Entry<Long, List<SafeBlockEvent>> entry : byChunk.entrySet()) {
+                        long packed = entry.getKey();
+                        ChunkSnapshot existing = data.chunks.get(packed);
+                        List<SafeTick> blockTicks = existing == null ? List.of() : existing.blockTicks();
+                        List<SafeTick> fluidTicks = existing == null ? List.of() : existing.fluidTicks();
+                        List<SafeBlockEvent> merged = new ArrayList<>(
+                                existing == null ? List.of() : existing.blockEvents());
+                        merged.addAll(entry.getValue());
+                        merged.sort(BlockEventManager.COMPARE_BY_ORDER);
+                        data.chunks.put(packed, new ChunkSnapshot(blockTicks, fluidTicks, merged));
+                        data.pendingRestore.add(packed);
+                    }
+                    data.blockEvents.clear();
+                    data.blockEventsPendingRestore = false;
                 }
             });
         }
@@ -295,6 +405,21 @@ public final class SafeSaveStore {
             });
         }
         return ticks;
+    }
+
+    private static List<SafeBlockEvent> loadBlockEvents(final ListTag list) {
+        List<SafeBlockEvent> events = new ArrayList<>(list.size());
+        for (int i = 0; i < list.size(); i++) {
+            final int index = i;
+            list.getCompound(index).ifPresent(tag -> {
+                SafeBlockEvent event = SafeBlockEvent.load(tag);
+                if (event != null) {
+                    events.add(event);
+                }
+            });
+        }
+        events.sort(BlockEventManager.COMPARE_BY_ORDER);
+        return events;
     }
 
     /** 各维度游戏时间的调试快照，供 {@code /safesave status} 使用。 */

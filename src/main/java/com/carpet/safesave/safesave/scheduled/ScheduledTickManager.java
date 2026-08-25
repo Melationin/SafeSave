@@ -2,6 +2,8 @@ package com.carpet.safesave.safesave.scheduled;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveStore;
+import com.carpet.safesave.safesave.blockevent.BlockEventManager;
+import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
 import com.carpet.safesave.rules.SafeSaveRules;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongIterator;
@@ -165,15 +167,22 @@ public final class ScheduledTickManager {
         }
 
         int rebuilt = 0;
+        List<SafeBlockEvent> blockEventsToRestore = new ArrayList<>();
         for (Long boxed : candidates) {
             long key = boxed;
             Object block = blockContainers.get(key);
             Object fluid = fluidContainers.get(key);
-            if (restoreInto(level, key, block, fluid,
+            SafeSaveStore.ChunkSnapshot snapshot = restoreInto(level, key, block, fluid,
                     ((SafeTickContainer) block).SS$snapshotQueue(),
-                    ((SafeTickContainer) fluid).SS$snapshotQueue())) {
+                    ((SafeTickContainer) fluid).SS$snapshotQueue());
+            if (snapshot != null) {
                 rebuilt++;
+                blockEventsToRestore.addAll(snapshot.blockEvents());
             }
+        }
+        // 同一个正常 tick 重建的所有区块，其方块事件一起按全局顺序合并回世界队列。
+        if (!blockEventsToRestore.isEmpty()) {
+            BlockEventManager.restoreChunkEvents(level, blockEventsToRestore);
         }
 
         // 只记录“就绪”的区块；尚未解包的区块会在下个正常 tick 重新进入 newKeys。
@@ -196,9 +205,12 @@ public final class ScheduledTickManager {
     /**
      * @param blockContainer 该区块的 {@code LevelChunkTicks<Block>}
      * @param fluidContainer 该区块的 {@code LevelChunkTicks<Fluid>}
+     * @return 被恢复的区块快照；没有可恢复内容时为 {@code null}。
+     *         快照已被消费（从 {@code pendingRestore}/{@code chunks} 移除），
+     *         调用方负责处理其中的方块事件。
      */
     @SuppressWarnings("unchecked")
-    private static boolean restoreInto(final ServerLevel level,
+    private static SafeSaveStore.ChunkSnapshot restoreInto(final ServerLevel level,
                                       final long packedChunkPos,
                                       final Object blockContainer,
                                       final Object fluidContainer,
@@ -207,7 +219,7 @@ public final class ScheduledTickManager {
         String dimension = dimensionId(level);
         SafeSaveStore.ChunkSnapshot snapshot = store.take(dimension, packedChunkPos);
         if (snapshot == null) {
-            return false;
+            return null;
         }
         warnIfStale(level);
         int keptBlock = applyTicks((TickContainerAccess<Block>) blockContainer, snapshot.blockTicks(),
@@ -217,7 +229,7 @@ public final class ScheduledTickManager {
         DebugLog.info("{} {}: restored {} block + {} fluid tick(s) with absolute timing (kept {} pre-existing)",
                 dimension, ChunkPos.unpack(packedChunkPos),
                 snapshot.blockTicks().size(), snapshot.fluidTicks().size(), keptBlock + keptFluid);
-        return true;
+        return snapshot;
     }
 
     /**
@@ -331,6 +343,9 @@ public final class ScheduledTickManager {
             return;
         }
 
+        // 注意：如果这个区块不是 SafeTickContainer（ImposterProtoChunk 等），上面已经 return；
+        // 方块事件快照依赖 LevelChunk 对应的世界级队列，与容器类型无关，因此放在容器检查之后。
+
         // 容器不可读（如与第三方刻调度重写冲突）时返回 null：跳过该区块，保留存储中的旧条目，
         // 而不是以空快照覆盖——那会悄悄删除已保存的刻。
         List<?> blockQueue = blockContainer.SS$snapshotQueue();
@@ -340,7 +355,8 @@ public final class ScheduledTickManager {
         }
         List<SafeTick> block = toSafeTicks(blockQueue);
         List<SafeTick> fluid = toSafeTicks(fluidQueue);
-        store.put(dimensionId(level), packedChunkPos, new SafeSaveStore.ChunkSnapshot(block, fluid));
+        List<SafeBlockEvent> chunkEvents = BlockEventManager.snapshotChunkEvents(level, packedChunkPos);
+        store.put(dimensionId(level), packedChunkPos, new SafeSaveStore.ChunkSnapshot(block, fluid, chunkEvents));
         if (addToPendingRestore) {
             // 同会话重载场景：区块卸载后马上又加载，pendingRestore 保证它的快照会被
             // 后续正常 tick 的“新加载区块统一重建”再次消费。全量保存路径不加。

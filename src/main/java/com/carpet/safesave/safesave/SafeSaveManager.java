@@ -214,7 +214,9 @@ public final class SafeSaveManager {
                 continue;
             }
             ScheduledTickManager.restoreSubTickCount(level, data);
-            BlockEventManager.restore(level, data);
+            // 方块事件不再在 prepareLevels 一次性恢复：v4 起它们随区块快照，由
+            // 每个非冻结 tick 开头的新加载区块统一重建（ScheduledTickManager.onLevelTickStart）。
+            // v2/v3 旧数据在 SafeSaveStore.load 中已经迁移进区块快照。
         }
     }
 
@@ -244,8 +246,8 @@ public final class SafeSaveManager {
     }
 
     /**
-     * 在 {@code ServerLevel.tick} 的 HEAD 处调用。编排活塞顺序重建、计划刻的新加载区块统一重建
-     * 与实体 tick 顺序重建。
+     * 在 {@code ServerLevel.tick} 的 HEAD 处调用。编排活塞顺序重建、计划刻/方块事件的
+     * 新加载区块统一重建，以及实体 tick 顺序重建。
      */
     public static void onLevelTickStart(final ServerLevel level) {
         if (!enabled() || store == null) {
@@ -275,9 +277,11 @@ public final class SafeSaveManager {
             SafeSaveStore.DimensionData data = store.dimension(dimensionId(level));
             data.subTickCount = level.subTickCount;
             data.gameTime = level.getGameTime(); // 仅调试用
-            BlockEventManager.snapshot(level, data);
+            // 方块事件快照在 ScheduledTickManager.snapshotLevel 内部逐区块完成；
+            // 旧世界级迁移残余已在 SafeSaveStore.load 消费，v4 不再调用 BlockEventManager.snapshot。
             Path file = dimensionDataDir(level).resolve(FILE_NAME);
-            if (data.totalTicks() == 0 && data.blockEvents.isEmpty()) {
+
+            if (data.totalTicks() == 0 && data.totalBlockEvents() == 0) {
                 // 维度变空：删除旧文件，否则下次启动会读到已执行过的旧刻并重复恢复
                 try {
                     Files.deleteIfExists(file);
