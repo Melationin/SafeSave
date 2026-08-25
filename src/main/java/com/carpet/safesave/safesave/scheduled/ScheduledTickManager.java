@@ -84,36 +84,6 @@ public final class ScheduledTickManager {
     }
 
     /**
-     * 扫描该维度“已就绪”的刻容器集合。
-     *
-     * <p>就绪 = 已注册到 {@code LevelTicks.allContainers} 且已解包（无 {@code pendingTicks}）。
-     * 仍未解包的区块不返回，协调层会留到后续 tick 重试：Lithium 的 removeIf 只清“已入桶”刻的
-     * allTicks 索引，而它会在构造时把 pendingTicks 的 (type,pos) 索引预先放入 allTicks——
-     * 此刻恢复会残留这些索引，拦截之后相同 (type,pos) 的刻。
-     *
-     * <p>该方法只做只读扫描，不消费 {@code pendingRestore}，由 {@link SafeSaveManager} 统一协调。
-     */
-    public static Set<Long> collectReadyChunks(final ServerLevel level) {
-        Long2ObjectMap<?> blockContainers = ((TickContainerHolder) level.getBlockTicks()).SS$containers();
-        Long2ObjectMap<?> fluidContainers = ((TickContainerHolder) level.getFluidTicks()).SS$containers();
-
-        Set<Long> ready = new HashSet<>();
-        LongIterator blockKeys = blockContainers.keySet().iterator();
-        while (blockKeys.hasNext()) {
-            long key = blockKeys.nextLong();
-            Object block = blockContainers.get(key);
-            Object fluid = fluidContainers.get(key);
-            if (block instanceof SafeTickContainer blockContainer
-                    && fluid instanceof SafeTickContainer fluidContainer
-                    && !blockContainer.SS$hasPendingTicks()
-                    && !fluidContainer.SS$hasPendingTicks()) {
-                ready.add(key);
-            }
-        }
-        return ready;
-    }
-
-    /**
      * 恢复单个区块的<em>计划刻</em>（不处理方块事件；方块事件由协调层 {@code SafeSaveManager} 统一恢复）。
      *
      * @return 被消费的区块快照；没有可恢复内容时为 {@code null}。
@@ -292,8 +262,8 @@ public final class ScheduledTickManager {
      * @return 区块键 -> 该区块的计划刻快照；容器不可读/未就绪的区块不出现
      */
     public static Map<Long, ChunkTickSnapshot> snapshotLevelTicks(final ServerLevel level) {
-        Long2ObjectMap<?> blockContainers = ((TickContainerHolder) level.getBlockTicks()).SS$containers();
-        Long2ObjectMap<?> fluidContainers = ((TickContainerHolder) level.getFluidTicks()).SS$containers();
+        Long2ObjectMap<?> blockContainers = TickContainers.blockContainers(level);
+        Long2ObjectMap<?> fluidContainers = TickContainers.fluidContainers(level);
 
         Set<Long> keys = new HashSet<>();
         LongIterator blockKeys = blockContainers.keySet().iterator();

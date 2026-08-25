@@ -8,8 +8,8 @@ import com.carpet.safesave.safesave.blockentity.SafePiston;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import com.carpet.safesave.safesave.scheduled.SafeTick;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
+import com.carpet.safesave.safesave.scheduled.TickContainers;
 import com.carpet.safesave.safesave.scheduled.SafeTickContainer;
-import com.carpet.safesave.safesave.scheduled.TickContainerHolder;
 import com.carpet.safesave.rules.SafeSaveRules;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.minecraft.nbt.CompoundTag;
@@ -299,7 +299,7 @@ public final class SafeSaveManager {
             return Set.of();
         }
         String dimension = dimensionId(level);
-        Set<Long> ready = ScheduledTickManager.collectReadyChunks(level);
+        Set<Long> ready = TickContainers.collectReadyChunks(level);
 
         // 第一个正常 tick 没有“上一次”可比较：视作已知集合为空，这样 prepareLevels 期间已经
         // 加载好的区块也会在此时统一重建。
@@ -323,8 +323,8 @@ public final class SafeSaveManager {
             }
         }
 
-        Long2ObjectMap<?> blockContainers = ((TickContainerHolder) level.getBlockTicks()).SS$containers();
-        Long2ObjectMap<?> fluidContainers = ((TickContainerHolder) level.getFluidTicks()).SS$containers();
+        Long2ObjectMap<?> blockContainers = TickContainers.blockContainers(level);
+        Long2ObjectMap<?> fluidContainers = TickContainers.fluidContainers(level);
         List<SafeBlockEvent> blockEventsToRestore = new ArrayList<>();
         List<SafePiston> pistonsToRestore = new ArrayList<>();
         int rebuilt = 0;
