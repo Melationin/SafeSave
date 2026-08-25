@@ -3,6 +3,8 @@ package com.carpet.safesave.safesave.scheduled;
 import static com.carpet.safesave.util.DimensionIds.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
+import com.carpet.safesave.safesave.SafeSaveLevelState;
+import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
@@ -18,49 +20,20 @@ import net.minecraft.world.ticks.TickPriority;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.HashSet;
-import java.util.Set;
 
 /**
- * 计划刻（scheduled tick）的保存与恢复管理。
+ * 计划刻（scheduled tick）的保存与恢复管理（纯服务，无静态可变状态）。
  *
  * <p>原版将刻以 {@code SavedTick(type, pos, int delay, priority)} 存在区块 NBT 中，加载时按区块
  * 重新锚定 {@code delay} 并丢弃全局 {@code subTickOrder}，导致绝对触发时间漂移、跨区块顺序被摧毁。
  * 本类用<em>绝对</em> {@code triggerTick} 与原始全局 {@code subTickOrder} 快照/恢复每个区块的刻。
+ *
+ * <p>会话级计数（restored/dropped）在 {@link SafeSaveSession}；维度级警告位在
+ * {@link SafeSaveLevelState}。
  */
 public final class ScheduledTickManager {
 
-    /** 注入的权威存储；服务端加载后由 {@link #init} 设置。 */
-    private static SafeSaveStore store;
-
-    /** 已警告过的维度，确保消息每个会话只出现一次。 */
-    private static final Set<String> staleWarned = new HashSet<>();
-
-    /** 供 {@code /safesave status} 使用的诊断数据。 */
-    private static int restoredCount;
-    private static int droppedCount;
-
     private ScheduledTickManager() {
-    }
-
-    /** 服务端加载时注入存储并重置会话状态。 */
-    public static void init(final SafeSaveStore store) {
-        ScheduledTickManager.store = store;
-        reset();
-    }
-
-    public static void reset() {
-        staleWarned.clear();
-        restoredCount = 0;
-        droppedCount = 0;
-    }
-
-    public static int restoredCount() {
-        return restoredCount;
-    }
-
-    public static int droppedCount() {
-        return droppedCount;
     }
 
     /**
@@ -82,7 +55,7 @@ public final class ScheduledTickManager {
     }
 
     /**
-     * 恢复单个区块的<em>计划刻</em>（不处理方块事件；方块事件由协调层 {@code SafeSaveManager} 统一恢复）。
+     * 恢复单个区块的<em>计划刻</em>（不处理方块事件；方块事件由协调层统一恢复）。
      *
      * <p>绝对触发时刻与卸载期间继续走的世界时间之间的漂移在这里修正：对已过期
      * （{@code triggerTick < currentGameTime}）的计划刻，按保存时的剩余间隔
@@ -96,16 +69,18 @@ public final class ScheduledTickManager {
                                          final long packedChunkPos,
                                          final SafeSaveStore.ChunkSnapshot snapshot,
                                          final Object blockContainer,
-                                         final Object fluidContainer) {
+                                         final Object fluidContainer,
+                                         final SafeSaveSession session,
+                                         final SafeSaveLevelState levelState) {
         String dimension = dimensionId(level);
-        warnIfStale(level);
+        warnIfStale(level, session, levelState);
         long currentGameTime = level.getGameTime();
         int keptBlock = applyTicks((TickContainerAccess<Block>) blockContainer, snapshot.blockTicks(),
                 BuiltInRegistries.BLOCK, ((SafeTickContainer) blockContainer).SS$snapshotQueue(),
-                snapshot.snapshotGameTime(), currentGameTime);
+                snapshot.snapshotGameTime(), currentGameTime, session);
         int keptFluid = applyTicks((TickContainerAccess<Fluid>) fluidContainer, snapshot.fluidTicks(),
                 BuiltInRegistries.FLUID, ((SafeTickContainer) fluidContainer).SS$snapshotQueue(),
-                snapshot.snapshotGameTime(), currentGameTime);
+                snapshot.snapshotGameTime(), currentGameTime, session);
         DebugLog.info("{} {}: restored {} block + {} fluid tick(s) (expired ticks rebased from gameTime {}; kept {} pre-existing)",
                 dimension, ChunkPos.unpack(packedChunkPos),
                 snapshot.blockTicks().size(), snapshot.fluidTicks().size(),
@@ -118,14 +93,16 @@ public final class ScheduledTickManager {
      * {@code gameTime} 不一致，说明旁置文件与 {@code level.dat} 脱节（典型情况：某个会话
      * 关闭了规则，世界继续推进而此文件没有），这有助于解释为什么恢复的刻被大量顺延。
      */
-    private static void warnIfStale(final ServerLevel level) {
+    private static void warnIfStale(final ServerLevel level, final SafeSaveSession session,
+                                    final SafeSaveLevelState levelState) {
         String dimension = dimensionId(level);
-        SafeSaveStore.DimensionData data = store.dimensionOrNull(dimension);
-        if (data == null || data.gameTime == Long.MIN_VALUE) {
+        SafeSaveStore.DimensionData data = session.store.dimensionOrNull(dimension);
+        if (data == null || data.gameTime == Long.MIN_VALUE || levelState.staleWarned) {
             return;
         }
         long live = level.getGameTime();
-        if (data.gameTime != live && staleWarned.add(dimension)) {
+        if (data.gameTime != live) {
+            levelState.staleWarned = true;
             DebugLog.warn("{}: side file was written at gameTime={} but the world resumed at gameTime={} "
                             + "(difference {}). Chunk snapshots are self-timestamped and expired ticks will be "
                             + "rebased on load; this usually means 'safeSave' was off for a previous session.",
@@ -145,14 +122,15 @@ public final class ScheduledTickManager {
                                       final Registry<T> registry,
                                       final List<?> keep,
                                       final long snapshotGameTime,
-                                      final long currentGameTime) {
+                                      final long currentGameTime,
+                                      final SafeSaveSession session) {
         List<ScheduledTick<T>> ticks = new ArrayList<>(saved.size());
         for (SafeTick entry : saved) {
             Identifier id = Identifier.tryParse(entry.typeId());
             // BLOCK/FLUID 是 DefaultedRegistry：getValue() 遇到未知 id 会悄悄返回 AIR/EMPTY，
             // 因此必须显式检查注册表成员资格。
             if (id == null || !registry.containsKey(id)) {
-                droppedCount++;
+                session.droppedTickCount.incrementAndGet();
                 DebugLog.warn("dropping scheduled tick for unknown type '{}' at ({},{},{})",
                         entry.typeId(), entry.x(), entry.y(), entry.z());
                 continue;
@@ -171,7 +149,7 @@ public final class ScheduledTickManager {
                     entry.subTickOrder()));
         }
         ((SafeTickContainer) container).SS$replaceAll(ticks);
-        restoredCount += ticks.size();
+        session.restoredTickCount.addAndGet(ticks.size());
 
         int kept = 0;
         if (keep != null) {
@@ -210,9 +188,6 @@ public final class ScheduledTickManager {
                                                        final long packedChunkPos,
                                                        final TickContainerAccess<Block> blockTicks,
                                                        final TickContainerAccess<Fluid> fluidTicks) {
-        if (store == null) {
-            return null;
-        }
         SafeTickContainer blockContainer = (SafeTickContainer) blockTicks;
         SafeTickContainer fluidContainer = (SafeTickContainer) fluidTicks;
 
@@ -257,6 +232,4 @@ public final class ScheduledTickManager {
         });
         return out;
     }
-
-
 }

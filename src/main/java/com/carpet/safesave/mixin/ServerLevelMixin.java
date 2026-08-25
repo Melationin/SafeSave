@@ -1,5 +1,7 @@
 package com.carpet.safesave.mixin;
 
+import com.carpet.safesave.safesave.SafeSaveLevelAccess;
+import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveManager;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.entity.ServerLevelTickListAccess;
@@ -9,6 +11,7 @@ import net.minecraft.world.level.BlockEventData;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.entity.EntityTickList;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -18,14 +21,26 @@ import java.util.function.BooleanSupplier;
 
 /**
  * 世界刻调试输出、方块事件调试输出，以及 safe-save 的新加载区块统一重建。
+ *
+ * <p>同时通过 {@code @Unique} 字段实现 {@link SafeSaveLevelAccess}：safe-save 的维度级状态
+ * 直接挂在 {@code ServerLevel} 实例上，随世界创建/丢弃天然隔离。
  */
 @Mixin(ServerLevel.class)
-public abstract class ServerLevelMixin implements ServerLevelTickListAccess {
+public abstract class ServerLevelMixin implements ServerLevelTickListAccess, SafeSaveLevelAccess {
+
+    /** safe-save 维度级状态；构造期初始化，parse 线程经 {@link SafeSaveLevelAccess} 读取。 */
+    @Unique
+    private final SafeSaveLevelState SS$safeSaveLevelState = new SafeSaveLevelState();
 
     /** 暴露 private 的 {@code entityTickList} 字段供实体顺序管理访问。 */
     @Accessor("entityTickList")
     @Override
     public abstract EntityTickList SS$getEntityTickList();
+
+    @Override
+    public SafeSaveLevelState SS$safeSaveLevelState() {
+        return this.SS$safeSaveLevelState;
+    }
 
     /**
      * {@code ServerLevel.tick} 的 HEAD：输出请求的“打印世界刻”通道，外加每维度每非冻结 tick

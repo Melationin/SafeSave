@@ -161,7 +161,7 @@ public abstract class EntityMixin implements EntityOrderHolder
         long order = safe.getLongOr("entity_order", this.SS$entityOrder);
         if (order != Long.MIN_VALUE) {
             this.SS$entityOrder = order;
-            EntityOrderManager.observeOrder(order);
+            EntityOrderManager.observeOrder((Entity) (Object) this, order);
         }
     }
 }

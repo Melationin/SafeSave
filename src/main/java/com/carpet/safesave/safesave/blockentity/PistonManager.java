@@ -3,7 +3,8 @@ package com.carpet.safesave.safesave.blockentity;
 import static com.carpet.safesave.util.DimensionIds.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
-import com.carpet.safesave.util.OrderSequence;
+import com.carpet.safesave.safesave.SafeSaveLevelState;
+import com.carpet.safesave.safesave.SafeSaveSession;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
@@ -11,13 +12,10 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.TickingBlockEntity;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-
 
 /**
- * 移动中的活塞（{@code PistonMovingBlockEntity}）的管理（#4/#5）。
+ * 移动中的活塞（{@code PistonMovingBlockEntity}）的管理（纯服务，无静态可变状态）。
  *
  * <p>原版按 {@code Level.blockEntityTickers} 的插入顺序刻方块实体。重启后该顺序会变成
  * {@code BlockPos} 哈希顺序，导致同一刻内完成推动的相邻活塞互相观察到错误的邻居状态。
@@ -25,40 +23,37 @@ import java.util.Map;
  * 恢复该区块内活塞状态与原始相对顺序。
  *
  * <p>活塞状态持久化在 PME 方块实体 NBT 的 {@code safeSave} 子节点中。
+ *
+ * <p>活塞创建序号与刻循环器重建代数是<em>会话级</em>的：{@code PistonMovingBlockEntity}
+ * 的 {@code loadAdditional} 在方块实体获得所属世界之前运行，没有 level 可以寻址，因此
+ * 序号与代数保存在 {@link SafeSaveSession}；每个维度记住自己最近一次重建的代数
+ * （{@link SafeSaveLevelState#pistonOrderRebuiltAt}）。
  */
 public final class PistonManager {
-
-    /** 分配给每个新创建的 PistonMovingBlockEntity 的单调递增创建计数器（#4）。 */
-    private static final OrderSequence pistonOrder = new OrderSequence();
-    /**
-     * 每当一个移动中的活塞从 NBT 加载时递增，因为其刻循环器（ticker）槽位顺序需要重建（#4）。
-     * 之所以用代数计数器而不是布尔值，是因为 {@code loadAdditional} 在方块实体获得所属世界之前运行，
-     * 此时维度未知——因此改为由每个世界记住自己上次重建时的代数。
-     */
-    private static final java.util.concurrent.atomic.AtomicLong pistonOrderGeneration =
-            new java.util.concurrent.atomic.AtomicLong();
-    private static final Map<String, Long> pistonOrderRebuiltAt = new HashMap<>();
 
     private PistonManager() {
     }
 
-    /** @return 新构建的移动活塞的下一个创建序号 */
+    /** @return 新构建的移动活塞的下一个创建序号；会话未就绪时为 0 */
     public static long nextPistonOrder() {
-        return pistonOrder.next();
+        SafeSaveSession session = SafeSaveSession.current();
+        return session == null ? 0L : session.pistonOrder.next();
     }
 
-    /** 确保新创建的活塞严格排在所有从磁盘恢复的顺序值之后。 */
+    /** 确保新创建的活塞严格排在所有从磁盘恢复的顺序值之后。会话未就绪时 no-op。 */
     public static void observePistonOrder(final long restored) {
-        pistonOrder.observe(restored);
+        SafeSaveSession session = SafeSaveSession.current();
+        if (session != null) {
+            session.pistonOrder.observe(restored);
+        }
     }
 
+    /** 标记所有维度的活塞刻顺序需要重建。会话未就绪时 no-op。 */
     public static void markPistonTickOrderDirty() {
-        pistonOrderGeneration.incrementAndGet();
-    }
-
-    /** 服务端加载时重置会话状态。 */
-    public static void reset() {
-        pistonOrderRebuiltAt.clear();
+        SafeSaveSession session = SafeSaveSession.current();
+        if (session != null) {
+            session.pistonOrderGeneration.incrementAndGet();
+        }
     }
 
     /**
@@ -66,16 +61,16 @@ public final class PistonManager {
      * 因为 {@code ServerLevel.tick} 本身不受门控）：若有活塞从 NBT 加载过（代数已推进），
      * 重建该维度的活塞刻顺序。
      */
-    public static void onLevelTickStart(final ServerLevel level) {
+    public static void onLevelTickStart(final ServerLevel level,
+                                        final SafeSaveSession session,
+                                        final SafeSaveLevelState levelState) {
         String dimension = dimensionId(level);
-        long generation = pistonOrderGeneration.get();
-        if (pistonOrderRebuiltAt.getOrDefault(dimension, -1L) < generation) {
-            pistonOrderRebuiltAt.put(dimension, generation);
+        long generation = session.pistonOrderGeneration.get();
+        if (levelState.pistonOrderRebuiltAt < generation) {
+            levelState.pistonOrderRebuiltAt = generation;
             rebuildPistonTickOrder(level);
         }
     }
-
-    // ------------------------------------------------------------ 旧全量重建
 
     /**
      * 恢复 {@code Level.blockEntityTickers} 中移动活塞之间的原始相对刻顺序。
@@ -119,5 +114,4 @@ public final class PistonManager {
         DebugLog.info("{}: rebuilt tick order of {} moving piston(s) by creation sequence",
                 dimensionId(level), pistons.size());
     }
-
 }

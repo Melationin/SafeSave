@@ -42,7 +42,7 @@ public abstract class EntityTickListMixin implements EntityTickListAccess {
     /**
      * {@code add} 是所有实体进入 tick 列表的唯一入口：
      * 新生成的实体在此分配序号；从 NBT 加载的有序号实体不需要额外记录，
-     * 其所在区块会在非冻结 tick 开头由 {@code SafeSaveManager.rebuildNewChunks} 统一识别并重排。
+     * 其所在区块会在非冻结 tick 开头由 {@code ChunkRebuildCoordinator.rebuildNewChunks} 统一识别并重排。
      */
     @Inject(method = "add", at = @At("HEAD"))
     private void SS$onEntityAdded(final Entity entity, final CallbackInfo ci) {
@@ -50,7 +50,7 @@ public abstract class EntityTickListMixin implements EntityTickListAccess {
             return;
         }
         if (holder.SS$entityOrder() == Long.MIN_VALUE) {
-            holder.SS$assignEntityOrder(EntityOrderManager.nextOrder());
+            holder.SS$assignEntityOrder(EntityOrderManager.nextOrder(entity));
         }
     }
 }

@@ -3,7 +3,8 @@ package com.carpet.safesave.safesave.entity;
 import static com.carpet.safesave.util.DimensionIds.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
-import com.carpet.safesave.util.OrderSequence;
+import com.carpet.safesave.safesave.SafeSaveLevelAccess;
+import com.carpet.safesave.safesave.SafeSaveLevelState;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.entity.EntityTickList;
@@ -14,21 +15,21 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * 实体 tick 顺序的管理。
+ * 实体 tick 顺序的管理（纯服务，无静态可变状态）。
  *
  * <p>原版 {@code EntityTickList} 的 tick 序 = 实体进入列表的顺序，由区块晋级时机和异步反序列化
  * 完成顺序决定，重启后必然变化。本类给每个实体持久化单调序号（{@link EntityOrderHolder}，
  * 随实体 NBT 保存），并在恢复流程中按序号重建顺序。
  *
- * <p>时机：由 {@code SafeSaveManager.rebuildNewChunks} 统一驱动，每个非冻结 tick 只处理
+ * <p>时机：由 {@code ChunkRebuildCoordinator.rebuildNewChunks} 统一驱动，每个非冻结 tick 只处理
  * “与上一非冻结 tick 相比新加载的区块”集合。把这些区块内的<em>所有</em>实体收集起来，
  * 按全局序号统一排序后重插列表尾部——既修复区块内顺序，也修复新加载区块之间的跨区块顺序。
  * 第一次 unfreeze 时已知集合为空，因此全部已加载区块都会作为“新加载”进入一次统一排序。
+ *
+ * <p>实体序号是<em>维度级</em>的（{@link SafeSaveLevelState#entityOrder}）：实体的
+ * {@code level()} 始终可用，可从实体直接寻址。
  */
 public final class EntityOrderManager {
-
-    /** 分配给每个实体的单调递增 tick 序号。 */
-    private static final OrderSequence entityOrder = new OrderSequence();
 
     /** 无序号（本会话新生成）的实体排最后，保持相对顺序（List.sort 稳定）。 */
     private static final Comparator<Entity> ENTITY_ORDER = Comparator.comparingLong(
@@ -38,22 +39,23 @@ public final class EntityOrderManager {
     private EntityOrderManager() {
     }
 
-    /** @return 下一个实体 tick 序号 */
-    public static long nextOrder() {
-        return entityOrder.next();
+    /** @return 实体的下一个 tick 序号；非 ServerLevel 返回 0 */
+    public static long nextOrder(final Entity entity) {
+        if (entity.level() instanceof ServerLevel serverLevel) {
+            return SafeSaveLevelAccess.of(serverLevel).entityOrder.next();
+        }
+        return 0L;
     }
 
-    /** 确保新实体严格排在所有从磁盘恢复的序号之后。 */
-    public static void observeOrder(final long restored) {
-        entityOrder.observe(restored);
-    }
-
-    /** 服务端加载时重置会话状态。 */
-    public static void reset() {
+    /** 确保新实体严格排在所有从磁盘恢复的序号之后；非 ServerLevel no-op。 */
+    public static void observeOrder(final Entity entity, final long restored) {
+        if (entity.level() instanceof ServerLevel serverLevel) {
+            SafeSaveLevelAccess.of(serverLevel).entityOrder.observe(restored);
+        }
     }
 
     /**
-     * 由 {@code SafeSaveManager.rebuildNewChunks} 在非冻结 tick 调用。
+     * 由 {@code SafeSaveManager.onLevelTickStart} 在非冻结 tick 调用。
      *
      * <p>对 {@code newChunks}（本 tick 相对上一非冻结 tick 新加载的区块集合）做跨区块统一重排：
      * 收集这些区块内的所有实体 → 按全局序号排序 → 从原列表移除 → 整体重插列表尾部。
@@ -83,5 +85,4 @@ public final class EntityOrderManager {
         DebugLog.info("{}: rebuilt cross-chunk tick order of {} entity(ies) in {} newly loaded chunk(s)",
                 dimensionId(level), affected.size(), newChunks.size());
     }
-
 }

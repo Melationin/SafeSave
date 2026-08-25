@@ -37,7 +37,7 @@ public class CarpetServer implements CarpetExtension, ModInitializer {
 
     @Override
     public void onServerClosed(MinecraftServer server) {
-        SafeSaveManager.onServerClosed();
+        SafeSaveManager.onServerClosed(server);
     }
 
     @Override
