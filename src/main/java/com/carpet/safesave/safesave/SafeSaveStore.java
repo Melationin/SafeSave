@@ -307,16 +307,6 @@ public final class SafeSaveStore {
         }
         levelTag.put(KEY_CHUNKS, chunks);
 
-        // v2/v3 旧世界级队列不再写入。若内存中仍有（例如旧迁移尚未消费的残量），也一并保留到文件里，
-        // 但正常 v4 生命周期中该列表为空。
-        if (!data.blockEvents.isEmpty()) {
-            ListTag events = new ListTag();
-            for (SafeBlockEvent event : data.blockEvents) {
-                events.add(event.save());
-            }
-            levelTag.put(KEY_BLOCK_EVENTS, events);
-        }
-
         ListTag levels = new ListTag();
         levels.add(levelTag);
         root.put(KEY_DEBUG, debug);
@@ -371,19 +361,6 @@ public final class SafeSaveStore {
                 data.subTickCount = levelTag.getLongOr(KEY_SUB_TICK_COUNT, -1L);
                 data.gameTime = levelTag.getLongOr(KEY_DEBUG_GAME_TIME, Long.MIN_VALUE);
 
-                // v2/v3：先读旧世界级队列；v4 新文件通常没有这个键。旧事件迁移到区块快照，见下方 chunks。
-                ListTag oldEvents = levelTag.getListOrEmpty(KEY_BLOCK_EVENTS);
-                if (!oldEvents.isEmpty()) {
-                    for (int e = 0; e < oldEvents.size(); e++) {
-                        oldEvents.getCompound(e).ifPresent(eventTag -> {
-                            SafeBlockEvent event = SafeBlockEvent.load(eventTag);
-                            if (event != null) {
-                                data.blockEvents.add(event);
-                                data.blockEventsPendingRestore = true;
-                            }
-                        });
-                    }
-                }
 
                 ListTag chunks = levelTag.getListOrEmpty(KEY_CHUNKS);
                 for (int c = 0; c < chunks.size(); c++) {
