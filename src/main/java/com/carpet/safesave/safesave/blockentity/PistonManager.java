@@ -11,11 +11,10 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.TickingBlockEntity;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
 
 /**
  * 移动中的活塞（{@code PistonMovingBlockEntity}）的管理（#4/#5）。
@@ -25,8 +24,7 @@ import java.util.Map;
  * 本类为每个活塞持久化创建序号（{@link PistonOrderHolder}），并在新加载区块统一重建时
  * 恢复该区块内活塞状态与原始相对顺序。
  *
- * <p>活塞状态随 {@code SafeSaveStore.ChunkSnapshot} 按区块快照；同时 PME NBT 中的
- * {@code safeSave} 子节点作为冗余保留。
+ * <p>活塞状态持久化在 PME 方块实体 NBT 的 {@code safeSave} 子节点中。
  */
 public final class PistonManager {
 
@@ -75,109 +73,6 @@ public final class PistonManager {
             pistonOrderRebuiltAt.put(dimension, generation);
             rebuildPistonTickOrder(level);
         }
-    }
-
-    // ------------------------------------------------------------ 按区块快照
-
-    /**
-     * 捕获一个区块内所有移动活塞的 safe-save 状态。
-     *
-     * <p>只读取目标区块内已实际注册的方块实体，不扫描世界级 ticker 列表、不触碰未加载区块。
-     * 在卸载流程中调用是安全的：通过 {@code ServerChunkCache.getChunkNow} 获取当前已加载 chunk，
-     * 不会触发强制加载。
-     */
-    public static List<SafePiston> snapshotChunkPistons(final ServerLevel level, final long packedChunkPos) {
-        net.minecraft.world.level.chunk.LevelChunk chunk =
-                level.getChunkSource().getChunkNow(
-                        net.minecraft.world.level.ChunkPos.getX(packedChunkPos),
-                        net.minecraft.world.level.ChunkPos.getZ(packedChunkPos));
-        if (chunk == null) {
-            return List.of();
-        }
-        List<SafePiston> pistons = new ArrayList<>();
-        for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
-            if (!level.getBlockState(blockEntity.getBlockPos()).is(Blocks.MOVING_PISTON)) {
-                continue;
-            }
-            if (blockEntity instanceof SafePistonHolder holder) {
-                pistons.add(holder.SS$snapshotPiston());
-            }
-        }
-        pistons.sort(Comparator.comparingLong(SafePiston::order));
-        return pistons;
-    }
-
-    /**
-     * 捕获整个世界所有移动活塞，按区块分组。
-     *
-     * <p>全量保存路径使用：只遍历当前已加载区块的方块实体，避免扫描 world ticker 列表时
-     * 对已卸载/正在卸载区块调用 {@code getBlockState}。
-     */
-    public static Map<Long, List<SafePiston>> snapshotByChunk(final ServerLevel level) {
-        Map<Long, List<SafePiston>> byChunk = new LinkedHashMap<>();
-        // 通过 ServerChunkCache 当前可见 chunk 遍历，而不是 level.blockEntityTickers。
-        // getChunkNow 只返回已加载 FULL chunk，不会强制加载。
-        net.minecraft.server.level.ServerChunkCache cache = level.getChunkSource();
-        // 没有直接的“已加载 chunk 集合”公共 API，这里遍历世界 ticket 半径不可靠。
-        // 因此全量保存仍使用 blockEntityTickers，但通过 getChunkNow 确认区块仍已加载后再 getBlockState。
-        List<TickingBlockEntity> tickers = level.blockEntityTickers;
-        for (TickingBlockEntity ticker : tickers) {
-            if (ticker.isRemoved()) {
-                continue;
-            }
-            BlockPos pos = ticker.getPos();
-            if (pos == null) {
-                continue;
-            }
-            long packed = net.minecraft.world.level.ChunkPos.pack(pos);
-            // 关键：只在区块仍已加载时读取，避免 getBlockState 强制加载正在卸载的区块。
-            net.minecraft.world.level.chunk.LevelChunk chunk = cache.getChunkNow(
-                    net.minecraft.world.level.ChunkPos.getX(packed),
-                    net.minecraft.world.level.ChunkPos.getZ(packed));
-            if (chunk == null) {
-                continue;
-            }
-            if (!level.getBlockState(pos).is(Blocks.MOVING_PISTON)) {
-                continue;
-            }
-            BlockEntity blockEntity = chunk.getBlockEntity(pos);
-            if (!(blockEntity instanceof SafePistonHolder holder)) {
-                continue;
-            }
-            byChunk.computeIfAbsent(packed, k -> new ArrayList<>()).add(holder.SS$snapshotPiston());
-        }
-        for (List<SafePiston> pistons : byChunk.values()) {
-            pistons.sort(Comparator.comparingLong(SafePiston::order));
-        }
-        return byChunk;
-    }
-
-    /**
-     * 把从区块快照恢复的活塞状态写回 PME 实例，并提升全局计数器。
-     * 调用方需确保该活塞已经加载为 {@code PistonMovingBlockEntity}。
-     */
-    public static void restoreChunkPistons(final ServerLevel level, final List<SafePiston> saved) {
-        if (saved == null || saved.isEmpty()) {
-            return;
-        }
-        int restored = 0;
-        for (SafePiston entry : saved) {
-            BlockPos pos = new BlockPos(entry.x(), entry.y(), entry.z());
-            if (!level.getBlockState(pos).is(Blocks.MOVING_PISTON)) {
-                continue;
-            }
-            BlockEntity blockEntity = level.getBlockEntity(pos);
-            if (!(blockEntity instanceof SafePistonHolder holder)) {
-                continue;
-            }
-            if (entry.order() != Long.MIN_VALUE) {
-                observePistonOrder(entry.order());
-            }
-            holder.SS$restorePiston(entry);
-            restored++;
-        }
-        DebugLog.info("{}: restored {} moving piston state(s) from chunk snapshot",
-                dimensionId(level), restored);
     }
 
     // ------------------------------------------------------------ 旧全量重建

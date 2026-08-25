@@ -7,8 +7,7 @@ import net.minecraft.nbt.CompoundTag;
  *
  * <p>原版 PME 自身 NBT 已保存 {@code progress}（实际存 progressO）、方向、扩展状态等；
  * safe-save 额外保存修复 #2/#4/#5 所需的字段：正确的进度、上一帧进度、最后 tick 时刻，以及
- * 全局创建序号。这些字段随 {@code SafeSaveStore.ChunkSnapshot} 按区块保存，同时写入
- * PME NBT 的 {@code safeSave} 子节点作为冗余。
+ * 全局创建序号。这些字段直接持久化在 PME NBT 的 {@code safeSave} 子节点中。
  *
  * @param x          {@code PistonMovingBlockEntity.getBlockPos().getX()}
  * @param y          {@code PistonMovingBlockEntity.getBlockPos().getY()}

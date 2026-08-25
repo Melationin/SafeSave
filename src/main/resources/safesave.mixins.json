@@ -13,7 +13,8 @@
     "entity.PrimedTntMixin",
     "scheduled.LevelChunkTicksMixin",
     "scheduled.LevelTicksMixin",
-    "util.TagValueOutputMixin"
+    "util.TagValueOutputMixin",
+    "chunk.SerializableChunkDataMixin"
   ],
   "injectors": {
     "defaultRequire": 1

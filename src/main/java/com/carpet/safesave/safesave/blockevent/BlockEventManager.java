@@ -119,7 +119,7 @@ public final class BlockEventManager {
 
     /**
      * 将当前世界级队列按区块分组，并保留每条事件的全局 {@code order}。
-     * 供全量保存（{@code ScheduledTickManager.snapshotLevel}）和卸载快照使用。
+     * 供区块 NBT 保存路径（{@code SafeSaveManager.onChunkSerializing}）按区块取用。
      */
     public static Map<Long, List<SafeBlockEvent>> snapshotByChunk(final ServerLevel level) {
         refreshOrders(level);

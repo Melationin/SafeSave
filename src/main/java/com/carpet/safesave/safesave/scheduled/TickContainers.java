@@ -39,7 +39,7 @@ public final class TickContainers {
      * <p>就绪 = 已注册到 {@code LevelTicks.allContainers} 且已解包（无 {@code pendingTicks}）。
      * 仍未解包的区块不返回，协调层会留到后续 tick 重试。
      *
-     * <p>该方法只做只读扫描，不消费 {@code pendingRestore}，由 {@link SafeSaveManager} 统一协调。
+     * <p>该方法只做只读扫描，不消费 SafeSaveManager 的待恢复映射，由协调层统一消费。
      */
     public static LongSet collectReadyChunks(final ServerLevel level) {
         Long2ObjectMap<?> blockContainers = blockContainers(level);

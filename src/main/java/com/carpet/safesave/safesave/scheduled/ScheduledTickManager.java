@@ -4,8 +4,6 @@ import static com.carpet.safesave.util.DimensionIds.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveStore;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.LongIterator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -19,10 +17,8 @@ import net.minecraft.world.ticks.TickContainerAccess;
 import net.minecraft.world.ticks.TickPriority;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -88,18 +84,15 @@ public final class ScheduledTickManager {
     /**
      * 恢复单个区块的<em>计划刻</em>（不处理方块事件；方块事件由协调层 {@code SafeSaveManager} 统一恢复）。
      *
-     * @return 被消费的区块快照；没有可恢复内容时为 {@code null}。
+     * @param snapshot 该区块待恢复的 safe-save 快照（已由协调层从待恢复映射中取出）
      */
     @SuppressWarnings("unchecked")
-    public static SafeSaveStore.ChunkSnapshot restoreChunkTicks(final ServerLevel level,
-                                                                final long packedChunkPos,
-                                                                final Object blockContainer,
-                                                                final Object fluidContainer) {
+    public static void restoreChunkTicks(final ServerLevel level,
+                                         final long packedChunkPos,
+                                         final SafeSaveStore.ChunkSnapshot snapshot,
+                                         final Object blockContainer,
+                                         final Object fluidContainer) {
         String dimension = dimensionId(level);
-        SafeSaveStore.ChunkSnapshot snapshot = store.take(dimension, packedChunkPos);
-        if (snapshot == null) {
-            return null;
-        }
         warnIfStale(level);
         int keptBlock = applyTicks((TickContainerAccess<Block>) blockContainer, snapshot.blockTicks(),
                 BuiltInRegistries.BLOCK, ((SafeTickContainer) blockContainer).SS$snapshotQueue());
@@ -108,16 +101,6 @@ public final class ScheduledTickManager {
         DebugLog.info("{} {}: restored {} block + {} fluid tick(s) with absolute timing (kept {} pre-existing)",
                 dimension, ChunkPos.unpack(packedChunkPos),
                 snapshot.blockTicks().size(), snapshot.fluidTicks().size(), keptBlock + keptFluid);
-        return snapshot;
-    }
-
-    /** @return 该维度尚未应用（未消费）的待恢复区块数 */
-    public static int pendingChunkCount(final ServerLevel level) {
-        if (store == null) {
-            return 0;
-        }
-        SafeSaveStore.DimensionData data = store.dimensionOrNull(dimensionId(level));
-        return data == null ? 0 : data.pendingRestore.size();
     }
 
     /**
@@ -200,7 +183,8 @@ public final class ScheduledTickManager {
     /**
      * 捕获单个区块的计划刻（方块刻与流体刻分开）。
      *
-     * <p>协调层负责把返回结果与方块事件快照合并成 {@link SafeSaveStore.ChunkSnapshot} 并写入存储。
+     * <p>协调层负责把返回结果与方块事件快照合并成 {@link SafeSaveStore.ChunkSnapshot}，
+     * 供区块 NBT 保存路径写入。
      *
      * @return 该区块当前已解包容器的绝对刻；容器未就绪或不可读时为 {@code null}
      */
@@ -256,45 +240,5 @@ public final class ScheduledTickManager {
         return out;
     }
 
-    /**
-     * 返回该维度所有已加载区块的“计划刻快照”映射。
-     *
-     * <p>只做只读快照，不写入 {@link SafeSaveStore}、不处理方块事件；协调层负责把方块事件合并后统一写入。
-     *
-     * @return 区块键 -> 该区块的计划刻快照；容器不可读/未就绪的区块不出现
-     */
-    public static Map<Long, ChunkTickSnapshot> snapshotLevelTicks(final ServerLevel level) {
-        Long2ObjectMap<?> blockContainers = TickContainers.blockContainers(level);
-        Long2ObjectMap<?> fluidContainers = TickContainers.fluidContainers(level);
-
-        Set<Long> keys = new HashSet<>();
-        LongIterator blockKeys = blockContainers.keySet().iterator();
-        while (blockKeys.hasNext()) {
-            keys.add(blockKeys.nextLong());
-        }
-        LongIterator fluidKeys = fluidContainers.keySet().iterator();
-        while (fluidKeys.hasNext()) {
-            keys.add(fluidKeys.nextLong());
-        }
-
-        Map<Long, ChunkTickSnapshot> ticksByChunk = new HashMap<>();
-        for (Long boxed : keys) {
-            long key = boxed;
-            Object block = blockContainers.get(key);
-            Object fluid = fluidContainers.get(key);
-            if (!(block instanceof SafeTickContainer) || !(fluid instanceof SafeTickContainer)) {
-                continue;
-            }
-            @SuppressWarnings("unchecked")
-            TickContainerAccess<Block> blockAccess = (TickContainerAccess<Block>) block;
-            @SuppressWarnings("unchecked")
-            TickContainerAccess<Fluid> fluidAccess = (TickContainerAccess<Fluid>) fluid;
-            ChunkTickSnapshot ticks = snapshotChunkTicks(level, key, blockAccess, fluidAccess);
-            if (ticks != null) {
-                ticksByChunk.put(key, ticks);
-            }
-        }
-        return ticksByChunk;
-    }
 
 }
