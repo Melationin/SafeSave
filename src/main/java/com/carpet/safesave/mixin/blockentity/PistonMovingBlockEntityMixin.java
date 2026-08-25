@@ -2,8 +2,6 @@ package com.carpet.safesave.mixin.blockentity;
 
 import com.carpet.safesave.safesave.blockentity.PistonManager;
 import com.carpet.safesave.safesave.blockentity.PistonOrderHolder;
-import com.carpet.safesave.safesave.blockentity.SafePiston;
-import com.carpet.safesave.safesave.blockentity.SafePistonHolder;
 import com.carpet.safesave.util.SafeSaveNbt;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -21,7 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 
 @Mixin(PistonMovingBlockEntity.class)
-public abstract class PistonMovingBlockEntityMixin implements SafePistonHolder {
+public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder {
 
 
     @Shadow
@@ -39,31 +37,6 @@ public abstract class PistonMovingBlockEntityMixin implements SafePistonHolder {
     @Override
     public long SS$pistonOrder() {
         return this.SS$order;
-    }
-
-    @Override
-    public void SS$setPistonOrder(final long order) {
-        this.SS$order = order;
-    }
-
-    @Override
-    public SafePiston SS$snapshotPiston() {
-        return new SafePiston(
-                ((PistonMovingBlockEntity) (Object) this).getBlockPos().getX(),
-                ((PistonMovingBlockEntity) (Object) this).getBlockPos().getY(),
-                ((PistonMovingBlockEntity) (Object) this).getBlockPos().getZ(),
-                this.SS$order,
-                this.progress,
-                this.progressO,
-                this.lastTicked);
-    }
-
-    @Override
-    public void SS$restorePiston(final SafePiston piston) {
-        this.progress = piston.progress();
-        this.progressO = piston.progressO();
-        this.lastTicked = piston.lastTicked();
-        this.SS$order = piston.order();
     }
 
     @Inject(
