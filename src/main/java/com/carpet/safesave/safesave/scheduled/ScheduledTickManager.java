@@ -1,5 +1,7 @@
 package com.carpet.safesave.safesave.scheduled;
 
+import static com.carpet.safesave.util.DimensionIds.dimensionId;
+
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -109,7 +111,7 @@ public final class ScheduledTickManager {
         return snapshot;
     }
 
-    /** 当此世界仍有待处理（未应用）的恢复条目时为 {@code true}。 */
+    /** @return 该维度尚未应用（未消费）的待恢复区块数 */
     public static int pendingChunkCount(final ServerLevel level) {
         if (store == null) {
             return 0;
@@ -295,7 +297,4 @@ public final class ScheduledTickManager {
         return ticksByChunk;
     }
 
-    private static String dimensionId(final ServerLevel level) {
-        return level.dimension().identifier().toString();
-    }
 }

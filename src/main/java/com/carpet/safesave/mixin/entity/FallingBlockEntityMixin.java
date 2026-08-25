@@ -1,9 +1,8 @@
 package com.carpet.safesave.mixin.entity;
 
-import com.carpet.safesave.safesave.SafeSaveManager;
+import com.carpet.safesave.util.SafeSaveNbt;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.item.FallingBlockEntity;
-import net.minecraft.world.level.storage.TagValueOutput;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import org.spongepowered.asm.mixin.Mixin;
@@ -12,7 +11,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import static com.carpet.safesave.util.Util.KEY_SAFE_SAVE;
 
 @Mixin(FallingBlockEntity.class)
 public abstract class FallingBlockEntityMixin {
@@ -28,22 +26,20 @@ public abstract class FallingBlockEntityMixin {
 
     @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
     private void save(final ValueOutput output, final CallbackInfo ci) {
-        if (!SafeSaveManager.enabled()) {
+        if (!SafeSaveNbt.enabled()) {
             return;
         }
-        if(!(output instanceof TagValueOutput tagValueOutput)) return ;
-        ValueOutput safe = tagValueOutput.getChild(KEY_SAFE_SAVE);
-        if(safe == null) safe = tagValueOutput.child(KEY_SAFE_SAVE);
+        ValueOutput safe = SafeSaveNbt.child(output);
         safe.putBoolean("force_tick_after_teleport_to_duplicate", this.forceTickAfterTeleportToDuplicate);
         safe.store("start_pos", BlockPos.CODEC, this.getStartPos());
     }
 
     @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
     private void load(final ValueInput input, final CallbackInfo ci) {
-        if (!SafeSaveManager.enabled()) {
+        if (!SafeSaveNbt.enabled()) {
             return;
         }
-        ValueInput safe = input.child(KEY_SAFE_SAVE).orElse(null);
+        ValueInput safe = SafeSaveNbt.childOrNull(input);
         if (safe == null) {
             return;
         }

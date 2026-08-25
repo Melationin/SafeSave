@@ -1,5 +1,7 @@
 package com.carpet.safesave.safesave;
 
+import static com.carpet.safesave.util.DimensionIds.dimensionId;
+
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
@@ -12,6 +14,8 @@ import com.carpet.safesave.safesave.scheduled.TickContainers;
 import com.carpet.safesave.safesave.scheduled.SafeTickContainer;
 import com.carpet.safesave.rules.SafeSaveRules;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
@@ -68,7 +72,7 @@ public final class SafeSaveManager {
      * <p>每个正常 tick 都会把它替换为当刻的“已解包容器”集合；下一次 tick 时，当前集合比上次
      * 多出的键就是新加载区块。冻结期间刻意不更新，解冻后会把冻结期间加载的区块一并重建。
      */
-    private static final Map<String, Set<Long>> knownChunks = new HashMap<>();
+    private static final Map<String, LongSet> knownChunks = new HashMap<>();
 
     private SafeSaveManager() {
     }
@@ -115,9 +119,6 @@ public final class SafeSaveManager {
         return BlockEventManager.pendingCount(level);
     }
 
-    private static String dimensionId(final ServerLevel level) {
-        return level.dimension().identifier().toString();
-    }
 
     // ------------------------------------------------------------ 服务端钩子
 
@@ -299,24 +300,25 @@ public final class SafeSaveManager {
             return Set.of();
         }
         String dimension = dimensionId(level);
-        Set<Long> ready = TickContainers.collectReadyChunks(level);
+        LongSet ready = TickContainers.collectReadyChunks(level);
 
         // 第一个正常 tick 没有“上一次”可比较：视作已知集合为空，这样 prepareLevels 期间已经
         // 加载好的区块也会在此时统一重建。
-        Set<Long> previous = knownChunks.get(dimension);
+        LongSet previous = knownChunks.get(dimension);
         if (previous == null) {
-            previous = Set.of();
+            previous = new LongOpenHashSet();
         }
         // 诊断用：ready 相对 previous 多出的键（新加载）。
-        Set<Long> newKeys = new HashSet<>(ready);
+        LongOpenHashSet newKeys = new LongOpenHashSet(ready.size());
+        newKeys.addAll(ready);
         newKeys.removeAll(previous);
 
         SafeSaveStore.DimensionData data = store.dimensionOrNull(dimension);
-        Set<Long> candidates = new HashSet<>();
+        LongOpenHashSet candidates = new LongOpenHashSet();
         if (data != null) {
             // 只处理“已就绪且处于待恢复队列”的区块。newKeys 负责识别新加载，
             // 而 ready ∩ pendingRestore 额外兜底“卸载→重载发生在两个正常 tick 之间、未从 previous 消失”的边界。
-            for (Long boxed : ready) {
+            for (long boxed : ready) {
                 if (data.pendingRestore.contains(boxed)) {
                     candidates.add(boxed);
                 }
@@ -328,8 +330,7 @@ public final class SafeSaveManager {
         List<SafeBlockEvent> blockEventsToRestore = new ArrayList<>();
         List<SafePiston> pistonsToRestore = new ArrayList<>();
         int rebuilt = 0;
-        for (Long boxed : candidates) {
-            long key = boxed;
+        for (long key : candidates) {
             Object block = blockContainers.get(key);
             Object fluid = fluidContainers.get(key);
             if (!(block instanceof SafeTickContainer) || !(fluid instanceof SafeTickContainer)) {
@@ -383,7 +384,7 @@ public final class SafeSaveManager {
             data.gameTime = level.getGameTime(); // 仅调试用
             Path file = dimensionDataDir(level).resolve(FILE_NAME);
 
-            if (data.totalTicks() == 0 && data.totalBlockEvents() == 0 && data.totalPistons() == 0) {
+            if (data.totalStoredEntries() == 0) {
                 // 维度变空：删除旧文件，否则下次启动会读到已执行过的旧刻并重复恢复
                 try {
                     Files.deleteIfExists(file);

@@ -1,12 +1,11 @@
 package com.carpet.safesave.mixin.entity;
 
-import com.carpet.safesave.safesave.SafeSaveManager;
+import com.carpet.safesave.util.SafeSaveNbt;
 import com.carpet.safesave.safesave.entity.EntityOrderHolder;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Pose;
-import net.minecraft.world.level.storage.TagValueOutput;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
@@ -19,7 +18,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Optional;
 
-import static com.carpet.safesave.util.Util.KEY_SAFE_SAVE;
 
 
 @Mixin(Entity.class)
@@ -102,12 +100,10 @@ public abstract class EntityMixin implements EntityOrderHolder
 
     @Inject(method = "saveWithoutId", at = @At("TAIL"))
     private void save(final ValueOutput output, final CallbackInfo ci) {
-        if (!SafeSaveManager.enabled()) {
+        if (!SafeSaveNbt.enabled()) {
             return;
         }
-        if(!(output instanceof TagValueOutput tagValueOutput)) return ;
-        ValueOutput safe = tagValueOutput.getChild(KEY_SAFE_SAVE);
-        if(safe == null) safe = tagValueOutput.child(KEY_SAFE_SAVE);
+        ValueOutput safe = SafeSaveNbt.child(output);
         safe.store("motion", Vec3.CODEC, this.getDeltaMovement());
         safe.putInt("tick_count", this.tickCount);
         safe.putBoolean("first_tick", this.firstTick);
@@ -134,10 +130,10 @@ public abstract class EntityMixin implements EntityOrderHolder
 
     @Inject(method = "load", at = @At("TAIL"))
     private void load(final ValueInput input, final CallbackInfo ci) {
-        if (!SafeSaveManager.enabled()) {
+        if (!SafeSaveNbt.enabled()) {
             return;
         }
-        ValueInput safe = input.child(KEY_SAFE_SAVE).orElse(null);
+        ValueInput safe = SafeSaveNbt.childOrNull(input);
         if (safe == null) {
             return;
         }

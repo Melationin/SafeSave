@@ -1,6 +1,9 @@
 package com.carpet.safesave.safesave.blockentity;
 
+import static com.carpet.safesave.util.DimensionIds.dimensionId;
+
 import com.carpet.safesave.debug.DebugLog;
+import com.carpet.safesave.util.OrderSequence;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
@@ -28,7 +31,7 @@ import java.util.Map;
 public final class PistonManager {
 
     /** 分配给每个新创建的 PistonMovingBlockEntity 的单调递增创建计数器（#4）。 */
-    private static final java.util.concurrent.atomic.AtomicLong pistonOrder = new java.util.concurrent.atomic.AtomicLong();
+    private static final OrderSequence pistonOrder = new OrderSequence();
     /**
      * 每当一个移动中的活塞从 NBT 加载时递增，因为其刻循环器（ticker）槽位顺序需要重建（#4）。
      * 之所以用代数计数器而不是布尔值，是因为 {@code loadAdditional} 在方块实体获得所属世界之前运行，
@@ -43,12 +46,12 @@ public final class PistonManager {
 
     /** @return 新构建的移动活塞的下一个创建序号 */
     public static long nextPistonOrder() {
-        return pistonOrder.getAndIncrement();
+        return pistonOrder.next();
     }
 
     /** 确保新创建的活塞严格排在所有从磁盘恢复的顺序值之后。 */
     public static void observePistonOrder(final long restored) {
-        pistonOrder.accumulateAndGet(restored + 1L, Math::max);
+        pistonOrder.observe(restored);
     }
 
     public static void markPistonTickOrderDirty() {
@@ -222,7 +225,4 @@ public final class PistonManager {
                 dimensionId(level), pistons.size());
     }
 
-    private static String dimensionId(final ServerLevel level) {
-        return level.dimension().identifier().toString();
-    }
 }

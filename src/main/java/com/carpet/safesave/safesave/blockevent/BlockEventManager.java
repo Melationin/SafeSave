@@ -1,5 +1,7 @@
 package com.carpet.safesave.safesave.blockevent;
 
+import static com.carpet.safesave.util.DimensionIds.dimensionId;
+
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
@@ -231,7 +233,4 @@ public final class BlockEventManager {
         return droppedCount;
     }
 
-    private static String dimensionId(final ServerLevel level) {
-        return level.dimension().identifier().toString();
-    }
 }

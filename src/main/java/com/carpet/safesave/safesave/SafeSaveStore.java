@@ -118,14 +118,6 @@ public final class SafeSaveStore {
         /** 仅调试用——从不用于恢复刻 */
         public long gameTime = Long.MIN_VALUE;
 
-        public int totalTicks() {
-            int total = 0;
-            for (ChunkSnapshot snapshot : this.chunks.values()) {
-                total += snapshot.total();
-            }
-            return total;
-        }
-
         /** 仅计划刻/流体刻数量（不含方块事件）。 */
         public int totalScheduledTicks() {
             int total = 0;

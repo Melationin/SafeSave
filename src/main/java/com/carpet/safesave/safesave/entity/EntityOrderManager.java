@@ -1,6 +1,9 @@
 package com.carpet.safesave.safesave.entity;
 
+import static com.carpet.safesave.util.DimensionIds.dimensionId;
+
 import com.carpet.safesave.debug.DebugLog;
+import com.carpet.safesave.util.OrderSequence;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.entity.EntityTickList;
@@ -25,7 +28,7 @@ import java.util.List;
 public final class EntityOrderManager {
 
     /** 分配给每个实体的单调递增 tick 序号。 */
-    private static final java.util.concurrent.atomic.AtomicLong entityOrder = new java.util.concurrent.atomic.AtomicLong();
+    private static final OrderSequence entityOrder = new OrderSequence();
 
     /** 无序号（本会话新生成）的实体排最后，保持相对顺序（List.sort 稳定）。 */
     private static final Comparator<Entity> ENTITY_ORDER = Comparator.comparingLong(
@@ -37,12 +40,12 @@ public final class EntityOrderManager {
 
     /** @return 下一个实体 tick 序号 */
     public static long nextOrder() {
-        return entityOrder.getAndIncrement();
+        return entityOrder.next();
     }
 
     /** 确保新实体严格排在所有从磁盘恢复的序号之后。 */
     public static void observeOrder(final long restored) {
-        entityOrder.accumulateAndGet(restored + 1L, Math::max);
+        entityOrder.observe(restored);
     }
 
     /** 服务端加载时重置会话状态。 */
@@ -81,7 +84,4 @@ public final class EntityOrderManager {
                 dimensionId(level), affected.size(), newChunks.size());
     }
 
-    private static String dimensionId(final ServerLevel level) {
-        return level.dimension().identifier().toString();
-    }
 }

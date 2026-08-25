@@ -4,7 +4,7 @@ import com.carpet.safesave.safesave.blockentity.PistonManager;
 import com.carpet.safesave.safesave.blockentity.PistonOrderHolder;
 import com.carpet.safesave.safesave.blockentity.SafePiston;
 import com.carpet.safesave.safesave.blockentity.SafePistonHolder;
-import com.carpet.safesave.safesave.SafeSaveManager;
+import com.carpet.safesave.util.SafeSaveNbt;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
@@ -18,7 +18,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import static com.carpet.safesave.util.Util.KEY_SAFE_SAVE;
 
 
 @Mixin(PistonMovingBlockEntity.class)
@@ -93,10 +92,10 @@ public abstract class PistonMovingBlockEntityMixin implements SafePistonHolder {
 
     @Inject(method = "saveAdditional", at = @At("TAIL"))
     private void save(final ValueOutput output, final CallbackInfo ci) {
-        if (!SafeSaveManager.enabled()) {
+        if (!SafeSaveNbt.enabled()) {
             return;
         }
-        var tag = output.child(KEY_SAFE_SAVE);
+        ValueOutput tag = SafeSaveNbt.child(output);
         tag.putFloat("progress", this.progress);
         tag.putFloat("progress_o", this.progressO);
         tag.putLong("lastTicked", this.lastTicked);
@@ -105,26 +104,25 @@ public abstract class PistonMovingBlockEntityMixin implements SafePistonHolder {
 
     @Inject(method = "loadAdditional", at = @At("TAIL"))
     private void carpetExample$load(final ValueInput input, final CallbackInfo ci) {
-        if (!SafeSaveManager.enabled()) {
+        if (!SafeSaveNbt.enabled()) {
             return;
         }
-        var tag = input.child(KEY_SAFE_SAVE);
-        if(tag.isPresent()) {
-            var tag2 = tag.get();
-            float savedProgress = tag2.getFloatOr("progress", Float.NaN);
+        ValueInput tag = SafeSaveNbt.childOrNull(input);
+        if (tag != null) {
+            float savedProgress = tag.getFloatOr("progress", Float.NaN);
             if (!Float.isNaN(savedProgress)) {
                 this.progress = savedProgress;
-                this.progressO = tag2.getFloatOr("progress_o", savedProgress);
+                this.progressO = tag.getFloatOr("progress_o", savedProgress);
             }
-            this.lastTicked = tag2.getLongOr("lastTicked", this.lastTicked);
+            this.lastTicked = tag.getLongOr("lastTicked", this.lastTicked);
 
-            long order = tag2.getLongOr("order", Long.MIN_VALUE);
+            long order = tag.getLongOr("order", Long.MIN_VALUE);
             if (order != Long.MIN_VALUE) {
                 this.SS$order = order;
 
                 PistonManager.observePistonOrder(order);
             }
-        }else {
+        } else {
 
             // 旧版的保存方式
             float savedProgress = input.getFloatOr(KEY_PROGRESS, Float.NaN);
