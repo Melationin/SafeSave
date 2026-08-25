@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class SafeSaveSession {
 
-    private static SafeSaveSession current;
+    private static volatile SafeSaveSession current;
 
     /** 世界级元数据存储（sidecar）。 */
     public SafeSaveStore store;

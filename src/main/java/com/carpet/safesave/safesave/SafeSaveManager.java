@@ -5,7 +5,7 @@ import static com.carpet.safesave.util.Util.KEY_SAFE_SAVE;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.rules.SafeSaveRules;
-import com.carpet.safesave.mixin.chunk.SerializableChunkDataAccess;
+import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
 import com.carpet.safesave.safesave.chunk.ChunkNbtBridge;
 import com.carpet.safesave.safesave.chunk.ChunkRebuildCoordinator;
 import com.carpet.safesave.safesave.blockentity.PistonManager;

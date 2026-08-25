@@ -1,6 +1,7 @@
 package com.carpet.safesave.mixin.chunk;
 
 import com.carpet.safesave.safesave.SafeSaveManager;
+import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;

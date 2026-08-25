@@ -119,7 +119,7 @@ public final class SafeSaveFiles {
 
         int pending = 0;
         for (ServerLevel level : server.getAllLevels()) {
-            SafeSaveLevelState state = ((SafeSaveLevelAccess) level).SS$safeSaveLevelState();
+            SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
             pending += state.pendingChunks.size();
         }
         DebugLog.info("saved safesave world metadata over {} dimension(s); {} chunk(s) still pending rebuild",
