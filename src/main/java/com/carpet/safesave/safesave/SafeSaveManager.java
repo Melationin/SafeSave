@@ -413,10 +413,18 @@ public final class SafeSaveManager {
         if (ticks == null) {
             return;
         }
+        // 仍在恢复队列中 => 容器当前持有的是原版重新锚定的刻，正是我们打算丢弃的数据。
+        // 用它们覆盖条目会悄悄让整个功能失效。这在实践中很重要：
+        // MC 在启动后不久就会执行一次 flush 保存，可能赶在恢复之前。
+        String dimension = dimensionId(level);
+        SafeSaveStore.DimensionData data = store.dimensionOrNull(dimension);
+        if (data != null && data.pendingRestore.contains(key)) {
+            return;
+        }
         List<SafeBlockEvent> events = BlockEventManager.snapshotChunkEvents(level, key);
-        store.put(dimensionId(level), key, new SafeSaveStore.ChunkSnapshot(
+        store.put(dimension, key, new SafeSaveStore.ChunkSnapshot(
                 ticks.blockTicks(), ticks.fluidTicks(), events));
-        store.dimension(dimensionId(level)).pendingRestore.add(key);
+        store.dimension(dimension).pendingRestore.add(key);
     }
 
     /**
@@ -430,17 +438,24 @@ public final class SafeSaveManager {
         Map<Long, ScheduledTickManager.ChunkTickSnapshot> ticksByChunk = ScheduledTickManager.snapshotLevelTicks(level);
         Map<Long, List<SafeBlockEvent>> eventsByChunk = BlockEventManager.snapshotByChunk(level);
 
+        String dimension = dimensionId(level);
+        SafeSaveStore.DimensionData data = store.dimensionOrNull(dimension);
         Set<Long> keys = new HashSet<>(ticksByChunk.keySet());
         keys.addAll(eventsByChunk.keySet());
         int count = 0;
         for (Long boxed : keys) {
             long key = boxed;
+            // 仍在恢复队列中 => 用当前 vanilla 重锚内容覆盖会丢失尚未应用的绝对快照。
+            // 全量保存必须跳过，保留 store 里的旧条目。
+            if (data != null && data.pendingRestore.contains(key)) {
+                continue;
+            }
             ScheduledTickManager.ChunkTickSnapshot ticks = ticksByChunk.get(key);
             List<SafeBlockEvent> events = eventsByChunk.getOrDefault(key, List.of());
             if ((ticks == null || ticks.isEmpty()) && events.isEmpty()) {
                 continue;
             }
-            store.put(dimensionId(level), key, new SafeSaveStore.ChunkSnapshot(
+            store.put(dimension, key, new SafeSaveStore.ChunkSnapshot(
                     ticks == null ? List.of() : ticks.blockTicks(),
                     ticks == null ? List.of() : ticks.fluidTicks(),
                     events));

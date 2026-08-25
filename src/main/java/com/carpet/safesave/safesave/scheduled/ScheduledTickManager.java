@@ -295,10 +295,19 @@ public final class ScheduledTickManager {
         Long2ObjectMap<?> blockContainers = ((TickContainerHolder) level.getBlockTicks()).SS$containers();
         Long2ObjectMap<?> fluidContainers = ((TickContainerHolder) level.getFluidTicks()).SS$containers();
 
-        Map<Long, ChunkTickSnapshot> ticksByChunk = new HashMap<>();
+        Set<Long> keys = new HashSet<>();
         LongIterator blockKeys = blockContainers.keySet().iterator();
         while (blockKeys.hasNext()) {
-            long key = blockKeys.nextLong();
+            keys.add(blockKeys.nextLong());
+        }
+        LongIterator fluidKeys = fluidContainers.keySet().iterator();
+        while (fluidKeys.hasNext()) {
+            keys.add(fluidKeys.nextLong());
+        }
+
+        Map<Long, ChunkTickSnapshot> ticksByChunk = new HashMap<>();
+        for (Long boxed : keys) {
+            long key = boxed;
             Object block = blockContainers.get(key);
             Object fluid = fluidContainers.get(key);
             if (!(block instanceof SafeTickContainer) || !(fluid instanceof SafeTickContainer)) {
