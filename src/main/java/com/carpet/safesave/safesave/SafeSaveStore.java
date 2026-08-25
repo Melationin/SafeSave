@@ -43,15 +43,22 @@ public final class SafeSaveStore {
     private static final String KEY_BLOCK_TICKS = "block";
     private static final String KEY_FLUID_TICKS = "fluid";
     private static final String KEY_CHUNK_BLOCK_EVENTS = "block_events";
+    /** 保存快照时的 {@code Level.gameTime}；{@code Long.MIN_VALUE} = 缺失（恢复时不做顺延）。 */
+    private static final String KEY_SNAPSHOT_GAME_TIME = "snapshot_game_time";
 
     /**
-     * 一个区块的 safe-save 数据：绝对计划刻列表 + 方块事件列表。
+     * 一个区块的 safe-save 数据：绝对计划刻列表 + 方块事件列表 + 保存快照时的世界时间。
      *
      * <p>这是内存中的区块数据模型；磁盘形式为区块 NBT 的 {@code safeSave} 子节点。
+     * {@code snapshotGameTime} 只用于计划刻的顺延重锚定（见 {@code ScheduledTickManager}）：
+     * 区块卸载期间游戏时间继续走，重新加载时已过期的绝对触发时刻需要按保存时的剩余间隔顺延，
+     * 语义等价于原版 {@code SavedTick.delay} 的重新锚定。{@code Long.MIN_VALUE} 表示缺失
+     * （旧区块数据），恢复时保持绝对触发时刻不变。
      */
     public record ChunkSnapshot(List<SafeTick> blockTicks,
                                 List<SafeTick> fluidTicks,
-                                List<SafeBlockEvent> blockEvents) {
+                                List<SafeBlockEvent> blockEvents,
+                                long snapshotGameTime) {
         public ChunkSnapshot {
             blockTicks = List.copyOf(blockTicks);
             fluidTicks = List.copyOf(fluidTicks);
@@ -138,6 +145,9 @@ public final class SafeSaveStore {
         if (!snapshot.blockEvents().isEmpty()) {
             tag.put(KEY_CHUNK_BLOCK_EVENTS, saveBlockEvents(snapshot.blockEvents()));
         }
+        if (snapshot.snapshotGameTime() != Long.MIN_VALUE) {
+            tag.putLong(KEY_SNAPSHOT_GAME_TIME, snapshot.snapshotGameTime());
+        }
         return tag;
     }
 
@@ -153,10 +163,11 @@ public final class SafeSaveStore {
         List<SafeTick> blockTicks = loadTicks(tag.getListOrEmpty(KEY_BLOCK_TICKS));
         List<SafeTick> fluidTicks = loadTicks(tag.getListOrEmpty(KEY_FLUID_TICKS));
         List<SafeBlockEvent> chunkEvents = loadBlockEvents(tag.getListOrEmpty(KEY_CHUNK_BLOCK_EVENTS));
+        long snapshotGameTime = tag.getLongOr(KEY_SNAPSHOT_GAME_TIME, Long.MIN_VALUE);
         if (blockTicks.isEmpty() && fluidTicks.isEmpty() && chunkEvents.isEmpty()) {
             return null;
         }
-        return new ChunkSnapshot(blockTicks, fluidTicks, chunkEvents);
+        return new ChunkSnapshot(blockTicks, fluidTicks, chunkEvents, snapshotGameTime);
     }
 
     /**

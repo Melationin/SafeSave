@@ -84,6 +84,11 @@ public final class ScheduledTickManager {
     /**
      * 恢复单个区块的<em>计划刻</em>（不处理方块事件；方块事件由协调层 {@code SafeSaveManager} 统一恢复）。
      *
+     * <p>绝对触发时刻与卸载期间继续走的世界时间之间的漂移在这里修正：对已过期
+     * （{@code triggerTick < currentGameTime}）的计划刻，按保存时的剩余间隔
+     * （{@code triggerTick - snapshotGameTime}）从当前世界时间重新计时；未过期的保持绝对时刻，
+     * 保证重启零漂移。{@code snapshotGameTime == Long.MIN_VALUE} 时跳过顺延（旧区块数据）。
+     *
      * @param snapshot 该区块待恢复的 safe-save 快照（已由协调层从待恢复映射中取出）
      */
     @SuppressWarnings("unchecked")
@@ -94,20 +99,24 @@ public final class ScheduledTickManager {
                                          final Object fluidContainer) {
         String dimension = dimensionId(level);
         warnIfStale(level);
+        long currentGameTime = level.getGameTime();
         int keptBlock = applyTicks((TickContainerAccess<Block>) blockContainer, snapshot.blockTicks(),
-                BuiltInRegistries.BLOCK, ((SafeTickContainer) blockContainer).SS$snapshotQueue());
+                BuiltInRegistries.BLOCK, ((SafeTickContainer) blockContainer).SS$snapshotQueue(),
+                snapshot.snapshotGameTime(), currentGameTime);
         int keptFluid = applyTicks((TickContainerAccess<Fluid>) fluidContainer, snapshot.fluidTicks(),
-                BuiltInRegistries.FLUID, ((SafeTickContainer) fluidContainer).SS$snapshotQueue());
-        DebugLog.info("{} {}: restored {} block + {} fluid tick(s) with absolute timing (kept {} pre-existing)",
+                BuiltInRegistries.FLUID, ((SafeTickContainer) fluidContainer).SS$snapshotQueue(),
+                snapshot.snapshotGameTime(), currentGameTime);
+        DebugLog.info("{} {}: restored {} block + {} fluid tick(s) (expired ticks rebased from gameTime {}; kept {} pre-existing)",
                 dimension, ChunkPos.unpack(packedChunkPos),
-                snapshot.blockTicks().size(), snapshot.fluidTicks().size(), keptBlock + keptFluid);
+                snapshot.blockTicks().size(), snapshot.fluidTicks().size(),
+                snapshot.snapshotGameTime(), keptBlock + keptFluid);
     }
 
     /**
-     * 纯诊断用途。记录的 {@code gameTime} <strong>从不</strong>用于重新锚定任何东西——
-     * 触发时间按构造就是绝对的。但如果它与实时的 {@code gameTime} 不一致，说明旁置文件与
-     * {@code level.dat} 脱节（典型情况：某个会话关闭了规则，世界继续推进而此文件没有），
-     * 那么每个恢复的刻都会相应地过期。这一点值得明确指出。
+     * 纯诊断用途。旁置文件里的 {@code gameTime} <strong>从不</strong>用于重新锚定任何东西——
+     * 重锚定由每个区块快照自带的 {@code snapshotGameTime} 完成。如果这里的值与实时
+     * {@code gameTime} 不一致，说明旁置文件与 {@code level.dat} 脱节（典型情况：某个会话
+     * 关闭了规则，世界继续推进而此文件没有），这有助于解释为什么恢复的刻被大量顺延。
      */
     private static void warnIfStale(final ServerLevel level) {
         String dimension = dimensionId(level);
@@ -118,13 +127,15 @@ public final class ScheduledTickManager {
         long live = level.getGameTime();
         if (data.gameTime != live && staleWarned.add(dimension)) {
             DebugLog.warn("{}: side file was written at gameTime={} but the world resumed at gameTime={} "
-                            + "(difference {}). Restored ticks keep their absolute trigger times and will therefore "
-                            + "fire immediately. This usually means 'safeSave' was off for a previous session.",
+                            + "(difference {}). Chunk snapshots are self-timestamped and expired ticks will be "
+                            + "rebased on load; this usually means 'safeSave' was off for a previous session.",
                     dimension, data.gameTime, live, live - data.gameTime);
         }
     }
 
     /**
+     * @param snapshotGameTime 保存快照时的世界时间；{@code Long.MIN_VALUE} = 缺失，保持绝对触发时刻
+     * @param currentGameTime 当前世界时间，用于对已过期刻做原版式顺延重锚定
      * @param keep 清空后需要重新加入的既有刻；可为 {@code null}
      * @return 重新加入的既有刻数量
      */
@@ -132,7 +143,9 @@ public final class ScheduledTickManager {
     private static <T> int applyTicks(final TickContainerAccess<T> container,
                                       final List<SafeTick> saved,
                                       final Registry<T> registry,
-                                      final List<?> keep) {
+                                      final List<?> keep,
+                                      final long snapshotGameTime,
+                                      final long currentGameTime) {
         List<ScheduledTick<T>> ticks = new ArrayList<>(saved.size());
         for (SafeTick entry : saved) {
             Identifier id = Identifier.tryParse(entry.typeId());
@@ -145,10 +158,15 @@ public final class ScheduledTickManager {
                 continue;
             }
             T type = registry.getValue(id);
+            long trigger = entry.triggerTick();
+            if (snapshotGameTime != Long.MIN_VALUE) {
+                long remaining = trigger - snapshotGameTime;
+                trigger = Math.max(trigger, currentGameTime + Math.max(remaining, 0L));
+            }
             ticks.add(new ScheduledTick<>(
                     type,
                     new BlockPos(entry.x(), entry.y(), entry.z()),
-                    entry.triggerTick(),
+                    trigger,
                     TickPriority.byValue(entry.priority()),
                     entry.subTickOrder()));
         }

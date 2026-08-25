@@ -474,7 +474,8 @@ public final class SafeSaveManager {
             if (ticks.isEmpty() && events.isEmpty()) {
                 return;
             }
-            snapshot = new SafeSaveStore.ChunkSnapshot(ticks.blockTicks(), ticks.fluidTicks(), events);
+            snapshot = new SafeSaveStore.ChunkSnapshot(ticks.blockTicks(), ticks.fluidTicks(), events,
+                    level.getGameTime());
         }
 
         CompoundTag tag = SafeSaveStore.saveChunkData(snapshot);
