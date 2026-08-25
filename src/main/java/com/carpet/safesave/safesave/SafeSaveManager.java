@@ -244,7 +244,7 @@ public final class SafeSaveManager {
     }
 
     /**
-     * 在 {@code ServerLevel.tick} 的 HEAD 处调用。编排活塞顺序重建、计划刻的首刻恢复扫描
+     * 在 {@code ServerLevel.tick} 的 HEAD 处调用。编排活塞顺序重建、计划刻的新加载区块统一重建
      * 与实体 tick 顺序重建。
      */
     public static void onLevelTickStart(final ServerLevel level) {

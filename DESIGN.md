@@ -89,11 +89,11 @@ mod id `safesave`、产物 `SafeSave-<ver>-<modver>.jar`、mixin 配置 `safesav
 | `MinecraftServerSafeSaveMixin` | `prepareLevels` | HEAD | 全部 `ServerLevel` 已构造、但还没有区块被 unpack。是「levels 与 store 同时可用」的**最早**时刻 —— 恢复 `subTickCount` 必须早于任何新刻被分配，否则新旧 `subTickOrder` 会撞车 |
 | 同上 | `tickServer` | HEAD | freeze 必须在任何东西前进之前 |
 | 同上 | `saveAllChunks` | **HEAD 而非 RETURN** | `flush=true` 时 vanilla 会在存档过程中跑 `processUnloads`，那会 `unregisterTickContainerFromLevel`；到 RETURN 时一部分世界已从 `allContainers` 消失 |
-| `ServerLevelSafeSaveMixin` | `tick` | HEAD | 「输出世界 tick」的落点；同时承载每刻维护（#4 重排、#3 就绪检查）。**frozen 时 `ServerLevel.tick` 本身照跑**，所以冻结期间这些维护仍然工作 |
+| `ServerLevelSafeSaveMixin` | `tick` | HEAD | 「输出世界 tick」的落点；同时承载每刻维护（#4 重排、#3 就绪检查）与计划刻的新加载区块统一重建。**frozen 时 `ServerLevel.tick` 本身照跑**，但计划刻重建由 `runsNormally()` 门控，冻结期间不消费恢复队列 |
 | 同上 | `blockEvent` | HEAD | 只有在插入**前**采样 `contains` 才能看出 `ObjectLinkedOpenHashSet` 的去重 |
 | 同上 | `doBlockEvent` | RETURN | 需要 `CallbackInfoReturnable` 拿到 `handled` 结果 |
 | 同上 | `unload` | HEAD | tick 容器仍注册在 level 上的**最后**时刻 |
-| `LevelChunkSafeSaveMixin` | `unpackTicks` | **HEAD + TAIL** | HEAD 时 `pendingTicks` 尚未合并，队列里的只可能是**本会话**在区块停留 FULL 期间新排的刻（如跨区块边界的侦测器）；TAIL 让 vanilla 先跑完（`pendingTicks` 已清空、容器状态一致）再整体替换，随后把 HEAD 抓到的重新 schedule 回去 |
+| ~~`LevelChunkSafeSaveMixin`~~ | ~~`unpackTicks`~~ | **已删除（阶段 1）** | 原 HEAD+TAIL 方案被「每个非冻结 tick 开头统一重建新加载区块」取代。HEAD 原本抓本会话新排刻、TAIL 原本在 vanilla 解包后整体替换；现在重建发生在 tick 起点，`SS$snapshotQueue()` 作为 keep 列表直接拿到全部已解包刻，语义相同且与区块解包顺序解耦 |
 | `LevelTicksMixin` | `schedule` | HEAD | 复现 vanilla 自己的接受/丢弃判定，才能区分真插入与被去重吞掉 |
 | 同上 | `runCollectedTicks` | `INVOKE BiConsumer.accept` | vanilla 在这行**上一行**才 `alreadyRunThisTick.add(entry)`，所以读该 List 尾部就是即将执行的那条 —— 拿到完整 `ScheduledTick`（含 priority/subTickOrder）而**不需要脆弱的 local capture** |
 | `PistonMovingBlockEntitySafeSaveMixin` | 6 参 `<init>` | TAIL | 用完整描述符精确锁定 `moveBlocks` 用的那个构造器；2 参构造器是反序列化路径，其序号从 NBT 来 |
@@ -166,9 +166,11 @@ safesave_order: 0L
 
 **意图**：MC 启动后紧跟一次 flush 存档，可能落在恢复**之前**。若两者共用一个结构，那次存档会把已恢复容器的内容写回 store，随后的兜底 sweep 又应用一遍。数据虽幂等，但计数和语义都脏。拆开后 `read=1 restored=1`。
 
-### 5.4 `unpackTicks` 是合并而非纯替换
+**阶段 1 扩展**：卸载路径的 `snapshotChunk` 在成功 `put` 后也把该区块加入 `pendingRestore`（全量保存路径 `snapshotLevel` 不加），从而同会话重载也能被新加载统一重建消费。详细论证见 [同会话区块卸载-重载](docs/same-session-chunk-reload.md)。
 
-HEAD 抓、TAIL 补回。**意图**：区块停在 FULL 未 block-ticking 时仍可被排刻，纯替换会丢掉这些本会话新刻 —— 那是**比 vanilla 更差**。这套修复的底线是任何路径都不能不如 vanilla。
+### 5.4 重建是“替换 + 合并”，不是纯替换
+
+阶段 1 前是 `unpackTicks` HEAD 抓、TAIL 补回；阶段 1 改为在非冻结 tick 起点对 `ready ∩ pendingRestore` 的区块调用 `SS$replaceAll(绝对刻)`，然后把 `SS$snapshotQueue()` 拿到的既有刻重新 `schedule` 回去。**意图**：区块停在 FULL 未 block-ticking 时仍可被排刻，纯替换会丢掉这些本会话新刻 —— 那是**比 vanilla 更差**。这套修复的底线是任何路径都不能不如 vanilla。
 
 ### 5.5 `onServerClosed` 不清 store
 
@@ -211,7 +213,7 @@ Carpet 的 `onServerClosed` 在 `stopServer` **HEAD** 触发，而停服存档�
 | `onServerClosed` 清 store | 停服存档被静默跳过 —— 最重要的一次保存 | §5.5 |
 | 启动 flush 存档覆盖未恢复条目 | 恢复被 vanilla 重锚数据顶掉 | §5.3 的守卫 |
 | 全新世界误 freeze | 空 `DimensionData` 让 `isEmpty()` 失效 | §5.6 |
-| 恢复丢弃本会话新排刻 | 比 vanilla 更差 | §5.4 |
+| 恢复丢弃本会话新排刻 | 比 vanilla 更差 | §5.4（阶段 1 改为 tick 起点合并） |
 | 同区块恢复两次 | `read=1 restored=2`，语义脏 | §5.3 |
 | `snapshotChunk` 强转无 `instanceof` 保护 | `ImposterProtoChunk` 返回 `BlackholeTickAccess.emptyContainer()` → CCE | 补 guard（`snapshotLevel` 本来有，这条路径漏了） |
 | `pistonTickOrderDirty` 全局布尔但重排按 level | 下界的活塞被主世界的 tick 清了标记，永不重排 | 改生成计数器（§5.8） |

@@ -26,7 +26,8 @@ public abstract class ServerLevelMixin implements ServerLevelTickListAccess {
     public abstract EntityTickList SS$getEntityTickList();
 
     /**
-     * {@code ServerLevel.tick} 的 HEAD：输出请求的“打印世界刻”通道，外加每维度的一次性恢复扫描。
+     * {@code ServerLevel.tick} 的 HEAD：输出请求的“打印世界刻”通道，外加每维度每非冻结 tick
+     * 的计划刻新加载区块统一重建。
      */
     @Inject(method = "tick", at = @At("HEAD"))
     private void SS$onWorldTickHead(final BooleanSupplier haveTime, final CallbackInfo ci) {

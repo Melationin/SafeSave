@@ -19,8 +19,10 @@ import net.minecraft.world.ticks.TickContainerAccess;
 import net.minecraft.world.ticks.TickPriority;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -35,8 +37,14 @@ public final class ScheduledTickManager {
     /** 注入的权威存储；服务端加载后由 {@link #init} 设置。 */
     private static SafeSaveStore store;
 
-    /** 已执行过一次性首个世界刻恢复的维度。 */
-    private static final Set<String> firstTickDone = new HashSet<>();
+    /**
+     * 每个维度上次在<em>非冻结</em>世界刻开始时所观察到的已注册刻容器集合。
+     *
+     * <p>每个正常 tick 都会把它替换为当刻的 {@code allContainers} 并集；下一次 tick 时，出现在
+     * 当前集合却不在该集合中的区块就是“新加载/刚达到 FULL 的区块”，对它们统一重建计划刻。
+     * 冻结期间刻意不更新：解冻后，冻结期间加载的所有区块都会被视为新加载并得到恢复。
+     */
+    private static final Map<String, Set<Long>> knownChunks = new HashMap<>();
     /** 已警告过的维度，确保消息每个会话只出现一次。 */
     private static final Set<String> staleWarned = new HashSet<>();
 
@@ -54,7 +62,7 @@ public final class ScheduledTickManager {
     }
 
     public static void reset() {
-        firstTickDone.clear();
+        knownChunks.clear();
         staleWarned.clear();
         restoredCount = 0;
         droppedCount = 0;
@@ -87,53 +95,93 @@ public final class ScheduledTickManager {
     }
 
     /**
-     * 在 {@code ServerLevel.tick} 的 HEAD 处调用。执行每个维度的一次性恢复扫描。
+     * 在 {@code ServerLevel.tick} 的 HEAD 处调用。每个<em>非冻结</em> tick 开始统一重建新加载区块的刻。
      *
-     * <p>在 {@code prepareLevels} 期间准备好的区块已由 {@code unpackTicks} 钩子处理；此扫描捕获的是
-     * 已加载到 {@code FULL} 但尚未开始方块刻的区块，它们的刻仍停留在 {@code pendingTicks} 中。
-     * 在这里应用绝对数据严格优于原版：刻以其真实的触发时间进入队列，只需等待区块变为可刻即可。
+     * <p>架构：保存时计划刻已按区块快照到 {@link SafeSaveStore}；恢复不再在 {@code LevelChunk.unpackTicks}
+     * 里逐个改写，而是等区块真正开始参与世界刻后，在本 tick 的起点统一替换。判断“新加载”的方式是对比
+     * {@code LevelTicks.allContainers}：每个正常 tick 记录当时已注册的刻容器集合，下一次正常 tick 时，
+     * 当前集合比上次多出的键就是本 tick 新加载（达到 {@code FULL}）的区块。
+     *
+     * <p>冻结期间刻意<em>不</em>更新 {@link #knownChunks}：启动冻结或 {@code /tick freeze} 期间加载的区块，
+     * 会在解冻后的第一个正常 tick 被统一视为新加载并恢复，保证恢复数据不会在冻结时被部分消费。
+     *
+     * <p>仍未解包（{@code pendingTicks} 未清空）的容器被跳过，留到后续正常 tick：
+     * Lithium 的 removeIf 只清“已入桶”刻的 allTicks 索引，而它会在构造时把 pendingTicks 的
+     * (type,pos) 索引预先放入 allTicks——此刻恢复会残留这些索引，拦截之后相同 (type,pos) 的刻。
+     * unpack 完成后 pendingTicks 已清空、刻已进桶，removeIf 即可完整清空，恢复不再丢刻。
      */
     public static void onLevelTickStart(final ServerLevel level) {
-        if (store == null) {
+        if (!SafeSaveRules.safeSave || store == null) {
             return;
         }
         String dimension = dimensionId(level);
-        if (!firstTickDone.add(dimension)) {
-            return;
-        }
-        SafeSaveStore.DimensionData data = store.dimensionOrNull(dimension);
-        if (data == null || data.pendingRestore.isEmpty()) {
+
+        // 冻结时 ServerLevel.tick 仍会进入，但 runsNormally() 为 false，区块加载照常发生。
+        // 跳过重建且不更新 knownChunks，使这些区块在解冻后的第一个正常 tick 被当作新加载处理。
+        if (!level.tickRateManager().runsNormally()) {
             return;
         }
 
         Long2ObjectMap<?> blockContainers = ((TickContainerHolder) level.getBlockTicks()).SS$containers();
         Long2ObjectMap<?> fluidContainers = ((TickContainerHolder) level.getFluidTicks()).SS$containers();
-        int swept = 0;
-        for (Long boxed : new ArrayList<>(data.pendingRestore)) {
+
+        // “就绪”集合 = 已注册且已解包（无 pendingTicks）的刻容器。仍在 pendingTicks 的区块
+        // 不进入 knownChunks，因此后续 tick 会再次把它当作新加载，直到真正可重建。
+        Set<Long> ready = new HashSet<>();
+        LongIterator blockKeys = blockContainers.keySet().iterator();
+        while (blockKeys.hasNext()) {
+            long key = blockKeys.nextLong();
+            Object block = blockContainers.get(key);
+            Object fluid = fluidContainers.get(key);
+            if (block instanceof SafeTickContainer blockContainer
+                    && fluid instanceof SafeTickContainer fluidContainer
+                    && !blockContainer.SS$hasPendingTicks()
+                    && !fluidContainer.SS$hasPendingTicks()) {
+                ready.add(key);
+            }
+        }
+
+        // 第一个正常 tick 没有“上一次”可比较：视作已知集合为空，这样 prepareLevels 期间已经
+        // 加载好的区块也会在此时统一重建。
+        Set<Long> previous = knownChunks.get(dimension);
+        if (previous == null) {
+            previous = Set.of();
+        }
+        // 实际候选 = ready ∩ pendingRestore。诊断用 newKeys 记录 ready 相对 previous 多出的键（新加载）。
+        Set<Long> newKeys = new HashSet<>(ready);
+        newKeys.removeAll(previous);
+
+        SafeSaveStore.DimensionData data = store.dimensionOrNull(dimension);
+        Set<Long> candidates = new HashSet<>();
+        if (data != null) {
+            // 只处理“已就绪且处于待恢复队列”的区块。newKeys 负责识别新加载，
+            // 而 ready ∩ pendingRestore 额外兜底“卸载→重载发生在两个正常 tick 之间、未从 previous 消失”的边界。
+            // 不直接用 newKeys 去取：新加载但不在 pendingRestore 中的区块没有恢复数据，不应调用 store.take。
+            for (Long boxed : ready) {
+                if (data.pendingRestore.contains(boxed)) {
+                    candidates.add(boxed);
+                }
+            }
+        }
+
+        int rebuilt = 0;
+        for (Long boxed : candidates) {
             long key = boxed;
             Object block = blockContainers.get(key);
             Object fluid = fluidContainers.get(key);
-            // 不在 allContainers 中 => 区块未加载到 FULL；稍后由 unpackTicks 钩子处理。
-            if (!(block instanceof SafeTickContainer) || !(fluid instanceof SafeTickContainer)) {
-                continue;
-            }
-            // 仍未解包（pendingTicks 未清空）=> 跳过，交给 unpackTicks 钩子恢复：
-            // Lithium 的 removeIf 只清"已入桶"刻的 allTicks 索引，而它会在构造时把
-            // pendingTicks 的 (type,pos) 索引预先放入 allTicks——此刻恢复会残留这些索引，
-            // 拦截之后相同 (type,pos) 的刻。unpack 完成后 pendingTicks 已清空、刻已进桶，
-            // removeIf 即可完整清空，恢复不再丢刻。
-            if (((SafeTickContainer) block).SS$hasPendingTicks()
-                    || ((SafeTickContainer) fluid).SS$hasPendingTicks()) {
-                continue;
-            }
             if (restoreInto(level, key, block, fluid,
                     ((SafeTickContainer) block).SS$snapshotQueue(),
                     ((SafeTickContainer) fluid).SS$snapshotQueue())) {
-                swept++;
+                rebuilt++;
             }
         }
-        DebugLog.info("{}: first world tick - swept {} already-loaded chunk(s); {} tick(s) restored so far, {} dropped",
-                dimension, swept, restoredCount, droppedCount);
+
+        // 只记录“就绪”的区块；尚未解包的区块会在下个正常 tick 重新进入 newKeys。
+        knownChunks.put(dimension, ready);
+        if (!candidates.isEmpty()) {
+            DebugLog.info("{}: rebuild tick start - {} chunk(s) to rebuild ({} newly loaded); {} rebuilt, {} tick(s) restored so far, {} dropped",
+                    dimension, candidates.size(), newKeys.size(), rebuilt, restoredCount, droppedCount);
+        }
     }
 
     /** 当此世界仍有待处理（未应用）的恢复条目时为 {@code true}。 */
@@ -143,44 +191,6 @@ public final class ScheduledTickManager {
         }
         SafeSaveStore.DimensionData data = store.dimensionOrNull(dimensionId(level));
         return data == null ? 0 : data.pendingRestore.size();
-    }
-
-    /**
-     * @return 当此区块仍有未应用的恢复条目时为 {@code true}，即其刻容器中的当前内容即将被丢弃。
-     */
-    public static boolean hasPendingRestore(final LevelChunk chunk) {
-        if (!SafeSaveRules.safeSave || store == null) {
-            return false;
-        }
-        if (!(chunk.getLevel() instanceof ServerLevel level)) {
-            return false;
-        }
-        SafeSaveStore.DimensionData data = store.dimensionOrNull(dimensionId(level));
-        return data != null && data.pendingRestore.contains(chunk.getPos().pack());
-    }
-
-    /**
-     * 用保存的绝对刻替换区块的计划刻。从 {@code LevelChunk.unpackTicks} 的 TAIL 和首个世界刻扫描中调用。
-     *
-     * <p>存储条目会被<em>消费</em>，因此绝不会被应用两次；如果区块之后卸载，
-     * {@link #snapshotChunk} 会放回一个新条目。
-     *
-     * @param keepBlockTicks 在 {@code unpackTicks} 运行<em>之前</em>就已排队的 {@code ScheduledTick}，
-     *                       即本会话期间区块处于 {@code FULL} 时真正新调度的刻。它们会在恢复之后被重新加入，
-     *                       使本功能绝不会丢失原版本会保留的刻。可为 {@code null}。
-     * @return 当有内容被恢复时为 {@code true}
-     */
-    public static boolean restoreChunk(final LevelChunk chunk,
-                                       final List<?> keepBlockTicks,
-                                       final List<?> keepFluidTicks) {
-        if (!SafeSaveRules.safeSave || store == null) {
-            return false;
-        }
-        if (!(chunk.getLevel() instanceof ServerLevel level)) {
-            return false;
-        }
-        return restoreInto(level, chunk.getPos().pack(), chunk.getBlockTicks(), chunk.getFluidTicks(),
-                keepBlockTicks, keepFluidTicks);
     }
 
     /**
@@ -291,13 +301,19 @@ public final class ScheduledTickManager {
                 || !(chunk.getFluidTicks() instanceof SafeTickContainer)) {
             return;
         }
-        snapshot(level, chunk.getPos().pack(), chunk.getBlockTicks(), chunk.getFluidTicks());
+        snapshot(level, chunk.getPos().pack(), chunk.getBlockTicks(), chunk.getFluidTicks(), true);
     }
 
+    /**
+     * @param addToPendingRestore 卸载路径传 {@code true}：快照写入后立即把该区块放入恢复队列，
+     *                            使同一会话内重新加载的区块也会在后续正常 tick 开头被统一重建；
+     *                            全量保存路径传 {@code false}，避免把本次保存快照误当成“待恢复”。
+     */
     private static void snapshot(final ServerLevel level,
                                  final long packedChunkPos,
                                  final TickContainerAccess<Block> blockTicks,
-                                 final TickContainerAccess<Fluid> fluidTicks) {
+                                 final TickContainerAccess<Fluid> fluidTicks,
+                                 final boolean addToPendingRestore) {
         SafeTickContainer blockContainer = (SafeTickContainer) blockTicks;
         SafeTickContainer fluidContainer = (SafeTickContainer) fluidTicks;
 
@@ -325,6 +341,12 @@ public final class ScheduledTickManager {
         List<SafeTick> block = toSafeTicks(blockQueue);
         List<SafeTick> fluid = toSafeTicks(fluidQueue);
         store.put(dimensionId(level), packedChunkPos, new SafeSaveStore.ChunkSnapshot(block, fluid));
+        if (addToPendingRestore) {
+            // 同会话重载场景：区块卸载后马上又加载，pendingRestore 保证它的快照会被
+            // 后续正常 tick 的“新加载区块统一重建”再次消费。全量保存路径不加。
+            data = store.dimension(dimensionId(level));
+            data.pendingRestore.add(packedChunkPos);
+        }
     }
 
     private static List<SafeTick> toSafeTicks(final List<?> scheduledTicks) {
@@ -385,7 +407,7 @@ public final class ScheduledTickManager {
             TickContainerAccess<Block> blockAccess = (TickContainerAccess<Block>) block;
             @SuppressWarnings("unchecked")
             TickContainerAccess<Fluid> fluidAccess = (TickContainerAccess<Fluid>) fluid;
-            snapshot(level, key, blockAccess, fluidAccess);
+            snapshot(level, key, blockAccess, fluidAccess, false);
             count++;
         }
         return count;

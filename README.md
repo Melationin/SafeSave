@@ -83,16 +83,17 @@ Being independent of vanilla's chunk NBT also sidesteps the `markUnsaved` loss e
 |---|---|
 | `MinecraftServer.loadLevel` HEAD (Carpet `onServerLoaded`) | read the side file |
 | `MinecraftServer.prepareLevels` HEAD | restore `Level.subTickCount` + the block-event queue, bind debug labels |
-| `LevelChunk.unpackTicks` HEAD/TAIL | replace vanilla's re-anchored ticks with the absolute ones |
 | `MinecraftServer.tickServer` HEAD (once) | **freeze** the server if there was data to restore |
-| `ServerLevel.tick` HEAD (once per dimension) | sweep chunks already at `FULL` but not yet ticking |
-| `ServerLevel.unload` HEAD | snapshot that chunk before its containers are unregistered |
+| `ServerLevel.tick` HEAD (each non-frozen tick) | rebuild scheduled ticks for newly loaded / `pendingRestore` chunks |
+| `ServerLevel.unload` HEAD | snapshot that chunk before its containers are unregistered (also marks it `pendingRestore`) |
 | `MinecraftServer.saveAllChunks` HEAD | snapshot every loaded chunk, then write the file |
 
-The restore queue (`pendingRestore`, populated only from on-disk data) is kept separate from the live
-snapshot store, so a save landing between two restore paths cannot cause a chunk to be applied twice.
-A chunk's snapshot is re-created when it unloads. Because trigger times are absolute, an entry for a long-unloaded chunk stays valid
-indefinitely — nothing drifts.
+The restore queue (`pendingRestore`, populated from on-disk data and from unload snapshots) is kept
+separate from the live snapshot store, so a save landing between restore paths cannot cause a chunk to
+be applied twice. A chunk's snapshot is re-created when it unloads. Because trigger times are
+absolute, an entry for a long-unloaded chunk stays valid indefinitely — nothing drifts. Since phase 1,
+restore no longer hooks `unpackTicks`; it happens at the start of each non-frozen tick for every chunk
+that is both ready (unpacked) and in the restore queue, so same-session reloads are covered too.
 
 ### Freeze on startup
 
