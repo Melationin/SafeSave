@@ -1,4 +1,5 @@
 package com.carpet.safesave.safesave;
+import com.carpet.safesave.safesave.blockentity.SafePiston;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
 import com.carpet.safesave.safesave.scheduled.SafeTick;
@@ -30,10 +31,12 @@ public final class SafeSaveStore {
 
     /**
      * 当前磁盘布局。v1 = 仅计划刻；v2 增加世界级有序方块事件队列；
-     * v3 增加持有移动活塞的区块集合；v4 将方块事件改为<em>按区块</em>保存并增加全局顺序号。
-     * 旧版本仍可读取（{@link #MIN_READABLE_VERSION}）；v4 读取 v2/v3 时会把世界级队列迁移进区块快照。
+     * v3 增加持有移动活塞的区块集合；v4 将方块事件改为<em>按区块</em>保存并增加全局顺序号；
+     * v5 将移动活塞状态改为<em>按区块</em>快照。
+     * 旧版本仍可读取（{@link #MIN_READABLE_VERSION}）；v4 读取 v2/v3 时会把世界级队列迁移进区块快照，
+     * v5 读取旧版时移动活塞仍走 PME 自身 NBT（safesave_* 键）。
      */
-    public static final int FORMAT_VERSION = 4;
+    public static final int FORMAT_VERSION = 5;
 
     /** 此构建仍可读取的最旧布局。 */
     public static final int MIN_READABLE_VERSION = 1;
@@ -54,25 +57,37 @@ public final class SafeSaveStore {
     private static final String KEY_BLOCK_EVENTS = "block_events";
     /** v4+ 每区块的方块事件列表，按全局 {@code order} 升序 */
     private static final String KEY_CHUNK_BLOCK_EVENTS = "block_events";
+    /** v5+ 每区块的移动活塞状态列表 */
+    private static final String KEY_CHUNK_PISTONS = "pistons";
 
-    /** 每区块的绝对刻列表 + 该区块的方块事件列表。列表按取出顺序/全局顺序存储。 */
-    public record ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks, List<SafeBlockEvent> blockEvents) {
+    /** 每区块的绝对刻列表 + 方块事件列表 + 移动活塞列表。 */
+    public record ChunkSnapshot(List<SafeTick> blockTicks,
+                                List<SafeTick> fluidTicks,
+                                List<SafeBlockEvent> blockEvents,
+                                List<SafePiston> pistons) {
         public ChunkSnapshot {
             blockTicks = List.copyOf(blockTicks);
             fluidTicks = List.copyOf(fluidTicks);
             blockEvents = List.copyOf(blockEvents);
+            pistons = List.copyOf(pistons);
+        }
+
+        public ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks, List<SafeBlockEvent> blockEvents) {
+            this(blockTicks, fluidTicks, blockEvents, List.of());
         }
 
         public ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks) {
-            this(blockTicks, fluidTicks, List.of());
+            this(blockTicks, fluidTicks, List.of(), List.of());
         }
 
         public boolean isEmpty() {
-            return this.blockTicks.isEmpty() && this.fluidTicks.isEmpty() && this.blockEvents.isEmpty();
+            return this.blockTicks.isEmpty() && this.fluidTicks.isEmpty()
+                    && this.blockEvents.isEmpty() && this.pistons.isEmpty();
         }
 
         public int total() {
-            return this.blockTicks.size() + this.fluidTicks.size() + this.blockEvents.size();
+            return this.blockTicks.size() + this.fluidTicks.size()
+                    + this.blockEvents.size() + this.pistons.size();
         }
     }
 
@@ -134,6 +149,15 @@ public final class SafeSaveStore {
             int total = this.blockEvents.size();
             for (ChunkSnapshot snapshot : this.chunks.values()) {
                 total += snapshot.blockEvents().size();
+            }
+            return total;
+        }
+
+        /** 该维度所有移动活塞数量。 */
+        public int totalPistons() {
+            int total = 0;
+            for (ChunkSnapshot snapshot : this.chunks.values()) {
+                total += snapshot.pistons().size();
             }
             return total;
         }
@@ -203,6 +227,15 @@ public final class SafeSaveStore {
         return total;
     }
 
+    /** 所有移动活塞数量。 */
+    public int totalPistons() {
+        int total = 0;
+        for (DimensionData data : this.dimensions.values()) {
+            total += data.totalPistons();
+        }
+        return total;
+    }
+
     /**
      * 替换（当 {@code snapshot} 为空时则移除）某个区块的条目。
      */
@@ -267,6 +300,9 @@ public final class SafeSaveStore {
             if (!snapshot.blockEvents().isEmpty()) {
                 chunkTag.put(KEY_CHUNK_BLOCK_EVENTS, saveBlockEvents(snapshot.blockEvents()));
             }
+            if (!snapshot.pistons().isEmpty()) {
+                chunkTag.put(KEY_CHUNK_PISTONS, savePistons(snapshot.pistons()));
+            }
             chunks.add(chunkTag);
         }
         levelTag.put(KEY_CHUNKS, chunks);
@@ -300,6 +336,14 @@ public final class SafeSaveStore {
         ListTag list = new ListTag();
         for (SafeBlockEvent event : events) {
             list.add(event.save());
+        }
+        return list;
+    }
+
+    private static ListTag savePistons(final List<SafePiston> pistons) {
+        ListTag list = new ListTag();
+        for (SafePiston piston : pistons) {
+            list.add(piston.save());
         }
         return list;
     }
@@ -350,8 +394,9 @@ public final class SafeSaveStore {
                         List<SafeTick> blockTicks = loadTicks(chunkTag.getListOrEmpty(KEY_BLOCK_TICKS));
                         List<SafeTick> fluidTicks = loadTicks(chunkTag.getListOrEmpty(KEY_FLUID_TICKS));
                         List<SafeBlockEvent> chunkEvents = loadBlockEvents(chunkTag.getListOrEmpty(KEY_CHUNK_BLOCK_EVENTS));
-                        if (!blockTicks.isEmpty() || !fluidTicks.isEmpty() || !chunkEvents.isEmpty()) {
-                            data.chunks.put(packed, new ChunkSnapshot(blockTicks, fluidTicks, chunkEvents));
+                        List<SafePiston> pistons = loadPistons(chunkTag.getListOrEmpty(KEY_CHUNK_PISTONS));
+                        if (!blockTicks.isEmpty() || !fluidTicks.isEmpty() || !chunkEvents.isEmpty() || !pistons.isEmpty()) {
+                            data.chunks.put(packed, new ChunkSnapshot(blockTicks, fluidTicks, chunkEvents, pistons));
                             data.pendingRestore.add(packed);
                         }
                     });
@@ -382,7 +427,8 @@ public final class SafeSaveStore {
                                 existing == null ? List.of() : existing.blockEvents());
                         merged.addAll(entry.getValue());
                         merged.sort(BlockEventManager.COMPARE_BY_ORDER);
-                        data.chunks.put(packed, new ChunkSnapshot(blockTicks, fluidTicks, merged));
+                        List<SafePiston> pistons = existing == null ? List.of() : existing.pistons();
+                        data.chunks.put(packed, new ChunkSnapshot(blockTicks, fluidTicks, merged, pistons));
                         data.pendingRestore.add(packed);
                     }
                     data.blockEvents.clear();
@@ -420,6 +466,20 @@ public final class SafeSaveStore {
         }
         events.sort(BlockEventManager.COMPARE_BY_ORDER);
         return events;
+    }
+
+    private static List<SafePiston> loadPistons(final ListTag list) {
+        List<SafePiston> pistons = new ArrayList<>(list.size());
+        for (int i = 0; i < list.size(); i++) {
+            final int index = i;
+            list.getCompound(index).ifPresent(tag -> {
+                SafePiston piston = SafePiston.load(tag);
+                if (piston != null) {
+                    pistons.add(piston);
+                }
+            });
+        }
+        return pistons;
     }
 
     /** 各维度游戏时间的调试快照，供 {@code /safesave status} 使用。 */

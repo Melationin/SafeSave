@@ -4,6 +4,7 @@ import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
 import com.carpet.safesave.safesave.blockentity.PistonManager;
+import com.carpet.safesave.safesave.blockentity.SafePiston;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import com.carpet.safesave.safesave.scheduled.SafeTick;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
@@ -323,6 +324,7 @@ public final class SafeSaveManager {
         Long2ObjectMap<?> blockContainers = ((TickContainerHolder) level.getBlockTicks()).SS$containers();
         Long2ObjectMap<?> fluidContainers = ((TickContainerHolder) level.getFluidTicks()).SS$containers();
         List<SafeBlockEvent> blockEventsToRestore = new ArrayList<>();
+        List<SafePiston> pistonsToRestore = new ArrayList<>();
         int rebuilt = 0;
         for (Long boxed : candidates) {
             long key = boxed;
@@ -336,11 +338,16 @@ public final class SafeSaveManager {
             if (snapshot != null) {
                 rebuilt++;
                 blockEventsToRestore.addAll(snapshot.blockEvents());
+                pistonsToRestore.addAll(snapshot.pistons());
             }
         }
         // 同一个正常 tick 重建的所有区块，其方块事件一起按全局顺序合并回世界队列。
         if (!blockEventsToRestore.isEmpty()) {
             BlockEventManager.restoreChunkEvents(level, blockEventsToRestore);
+        }
+        // 同一个正常 tick 重建的所有区块，其活塞状态一起恢复。
+        if (!pistonsToRestore.isEmpty()) {
+            PistonManager.restoreChunkPistons(level, pistonsToRestore);
         }
 
         // 只记录“就绪”的区块；尚未解包的区块会在下个正常 tick 重新进入 newKeys。
@@ -372,7 +379,7 @@ public final class SafeSaveManager {
             data.gameTime = level.getGameTime(); // 仅调试用
             Path file = dimensionDataDir(level).resolve(FILE_NAME);
 
-            if (data.totalTicks() == 0 && data.totalBlockEvents() == 0) {
+            if (data.totalTicks() == 0 && data.totalBlockEvents() == 0 && data.totalPistons() == 0) {
                 // 维度变空：删除旧文件，否则下次启动会读到已执行过的旧刻并重复恢复
                 try {
                     Files.deleteIfExists(file);
@@ -384,8 +391,8 @@ public final class SafeSaveManager {
             write(file, store.saveDimension(dimensionId(level), data));
         }
         store.setServerTickCount(server.getTickCount()); // 仅调试用
-        DebugLog.info("saved {} scheduled tick(s) over {} loaded chunk(s) + {} block event(s) to per-dimension data/ files",
-                store.totalTicks(), chunks, store.totalBlockEvents());
+        DebugLog.info("saved {} scheduled tick(s) over {} loaded chunk(s) + {} block event(s) + {} piston(s) to per-dimension data/ files",
+                store.totalTicks(), chunks, store.totalBlockEvents(), store.totalPistons());
     }
 
     /**
@@ -422,8 +429,9 @@ public final class SafeSaveManager {
             return;
         }
         List<SafeBlockEvent> events = BlockEventManager.snapshotChunkEvents(level, key);
+        List<SafePiston> pistons = PistonManager.snapshotChunkPistons(level, key);
         store.put(dimension, key, new SafeSaveStore.ChunkSnapshot(
-                ticks.blockTicks(), ticks.fluidTicks(), events));
+                ticks.blockTicks(), ticks.fluidTicks(), events, pistons));
         store.dimension(dimension).pendingRestore.add(key);
     }
 
@@ -437,11 +445,13 @@ public final class SafeSaveManager {
     private static int snapshotLevel(final ServerLevel level) {
         Map<Long, ScheduledTickManager.ChunkTickSnapshot> ticksByChunk = ScheduledTickManager.snapshotLevelTicks(level);
         Map<Long, List<SafeBlockEvent>> eventsByChunk = BlockEventManager.snapshotByChunk(level);
+        Map<Long, List<SafePiston>> pistonsByChunk = PistonManager.snapshotByChunk(level);
 
         String dimension = dimensionId(level);
         SafeSaveStore.DimensionData data = store.dimensionOrNull(dimension);
         Set<Long> keys = new HashSet<>(ticksByChunk.keySet());
         keys.addAll(eventsByChunk.keySet());
+        keys.addAll(pistonsByChunk.keySet());
         int count = 0;
         for (Long boxed : keys) {
             long key = boxed;
@@ -452,13 +462,15 @@ public final class SafeSaveManager {
             }
             ScheduledTickManager.ChunkTickSnapshot ticks = ticksByChunk.get(key);
             List<SafeBlockEvent> events = eventsByChunk.getOrDefault(key, List.of());
-            if ((ticks == null || ticks.isEmpty()) && events.isEmpty()) {
+            List<SafePiston> pistons = pistonsByChunk.getOrDefault(key, List.of());
+            if ((ticks == null || ticks.isEmpty()) && events.isEmpty() && pistons.isEmpty()) {
                 continue;
             }
             store.put(dimension, key, new SafeSaveStore.ChunkSnapshot(
                     ticks == null ? List.of() : ticks.blockTicks(),
                     ticks == null ? List.of() : ticks.fluidTicks(),
-                    events));
+                    events,
+                    pistons));
             count++;
         }
         return count;
