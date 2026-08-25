@@ -117,6 +117,15 @@ public final class ScheduledTickManager {
             if (!(block instanceof SafeTickContainer) || !(fluid instanceof SafeTickContainer)) {
                 continue;
             }
+            // 仍未解包（pendingTicks 未清空）=> 跳过，交给 unpackTicks 钩子恢复：
+            // Lithium 的 removeIf 只清"已入桶"刻的 allTicks 索引，而它会在构造时把
+            // pendingTicks 的 (type,pos) 索引预先放入 allTicks——此刻恢复会残留这些索引，
+            // 拦截之后相同 (type,pos) 的刻。unpack 完成后 pendingTicks 已清空、刻已进桶，
+            // removeIf 即可完整清空，恢复不再丢刻。
+            if (((SafeTickContainer) block).SS$hasPendingTicks()
+                    || ((SafeTickContainer) fluid).SS$hasPendingTicks()) {
+                continue;
+            }
             if (restoreInto(level, key, block, fluid,
                     ((SafeTickContainer) block).SS$snapshotQueue(),
                     ((SafeTickContainer) fluid).SS$snapshotQueue())) {
