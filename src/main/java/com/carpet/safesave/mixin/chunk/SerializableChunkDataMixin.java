@@ -10,6 +10,7 @@ import net.minecraft.world.level.chunk.storage.SerializableChunkData;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyReturnValue;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
@@ -39,8 +40,8 @@ public abstract class SerializableChunkDataMixin {
         SafeSaveManager.onChunkSerializing(level, chunk, cir.getReturnValue());
     }
 
-    @Inject(method = "write", at = @At("RETURN"))
-    private void SS$onWrite(final CallbackInfoReturnable<CompoundTag> cir) {
-        cir.setReturnValue(SafeSaveManager.injectChunkData((SerializableChunkData) (Object) this, cir.getReturnValue()));
+    @ModifyReturnValue(method = "write", at = @At("RETURN"))
+    private CompoundTag SS$modifyWrite(final CompoundTag original) {
+        return SafeSaveManager.injectChunkData((SerializableChunkData) (Object) this, original);
     }
 }
