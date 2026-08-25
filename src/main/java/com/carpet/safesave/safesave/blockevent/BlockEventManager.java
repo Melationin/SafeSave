@@ -24,7 +24,7 @@ import java.util.Map;
 /**
  * 方块事件（block event）的按区块保存与恢复管理。
  *
- * <p>v4 起，方块事件随 {@link SafeSaveStore.ChunkSnapshot} 按区块保存。每条事件带全局
+ * <p>方块事件随 {@link SafeSaveStore.ChunkSnapshot} 按区块保存。每条事件带全局
  * {@code order}，用于把分散在不同区块快照中的事件重新合并成世界级执行顺序。
  *
  * <p>原版的队列是 {@code ServerLevel.blockEvents}（{@code ObjectLinkedOpenHashSet}），

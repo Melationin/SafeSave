@@ -24,15 +24,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class PistonMovingBlockEntityMixin implements SafePistonHolder {
 
 
-    @Unique
-    private static final String KEY_PROGRESS = "safesave_progress";
-    @Unique
-    private static final String KEY_PROGRESS_O = "safesave_progress_o";
-    @Unique
-    private static final String KEY_LAST_TICKED = "safesave_last_ticked";
-    @Unique
-    private static final String KEY_ORDER = "safesave_order";
-
     @Shadow
     private float progress;
 
@@ -120,21 +111,6 @@ public abstract class PistonMovingBlockEntityMixin implements SafePistonHolder {
             if (order != Long.MIN_VALUE) {
                 this.SS$order = order;
 
-                PistonManager.observePistonOrder(order);
-            }
-        } else {
-
-            // 旧版的保存方式
-            float savedProgress = input.getFloatOr(KEY_PROGRESS, Float.NaN);
-            if (!Float.isNaN(savedProgress)) {
-                this.progress = savedProgress;
-                this.progressO = input.getFloatOr(KEY_PROGRESS_O, savedProgress);
-            }
-            this.lastTicked = input.getLongOr(KEY_LAST_TICKED, this.lastTicked);
-
-            long order = input.getLongOr(KEY_ORDER, Long.MIN_VALUE);
-            if (order != Long.MIN_VALUE) {
-                this.SS$order = order;
                 PistonManager.observePistonOrder(order);
             }
         }

@@ -25,8 +25,8 @@ import java.util.Map;
  * 本类为每个活塞持久化创建序号（{@link PistonOrderHolder}），并在新加载区块统一重建时
  * 恢复该区块内活塞状态与原始相对顺序。
  *
- * <p>v5 起活塞状态随 {@code SafeSaveStore.ChunkSnapshot} 按区块快照；同时 PME NBT 中的
- * {@code safesave_*} 键仍保留作为兼容/冗余。
+ * <p>活塞状态随 {@code SafeSaveStore.ChunkSnapshot} 按区块快照；同时 PME NBT 中的
+ * {@code safeSave} 子节点作为冗余保留。
  */
 public final class PistonManager {
 

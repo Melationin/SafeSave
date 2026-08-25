@@ -238,9 +238,8 @@ public final class SafeSaveManager {
                 continue;
             }
             ScheduledTickManager.restoreSubTickCount(level, data);
-            // 方块事件不再在 prepareLevels 一次性恢复：v4 起它们随区块快照，由
-            // 每个非冻结 tick 开头的新加载区块统一重建（SafeSaveManager.rebuildNewChunks）。
-            // v2/v3 旧数据在 SafeSaveStore.load 中已经迁移进区块快照。
+            // 方块事件随区块快照，由每个非冻结 tick 开头的新加载区块统一重建
+            // （SafeSaveManager.rebuildNewChunks）。
         }
     }
 

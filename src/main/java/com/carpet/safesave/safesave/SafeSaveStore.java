@@ -30,16 +30,9 @@ import java.util.Set;
 public final class SafeSaveStore {
 
     /**
-     * 当前磁盘布局。v1 = 仅计划刻；v2 增加世界级有序方块事件队列；
-     * v3 增加持有移动活塞的区块集合；v4 将方块事件改为<em>按区块</em>保存并增加全局顺序号；
-     * v5 将移动活塞状态改为<em>按区块</em>快照。
-     * 旧版本仍可读取（{@link #MIN_READABLE_VERSION}）；v4 读取 v2/v3 时会把世界级队列迁移进区块快照，
-     * v5 读取旧版时移动活塞仍走 PME 自身 NBT（safesave_* 键）。
+     * 当前磁盘布局：按区块保存计划刻、方块事件与移动活塞快照。
      */
     public static final int FORMAT_VERSION = 5;
-
-    /** 此构建仍可读取的最旧布局。 */
-    public static final int MIN_READABLE_VERSION = 1;
 
     private static final String KEY_VERSION = "version";
     private static final String KEY_LEVELS = "levels";
@@ -53,11 +46,9 @@ public final class SafeSaveStore {
     private static final String KEY_CHUNK_Z = "z";
     private static final String KEY_BLOCK_TICKS = "block";
     private static final String KEY_FLUID_TICKS = "fluid";
-    /** 旧版（v2/v3）的待处理方块事件有序队列 */
-    private static final String KEY_BLOCK_EVENTS = "block_events";
-    /** v4+ 每区块的方块事件列表，按全局 {@code order} 升序 */
+    /** 每区块的方块事件列表，按全局 {@code order} 升序 */
     private static final String KEY_CHUNK_BLOCK_EVENTS = "block_events";
-    /** v5+ 每区块的移动活塞状态列表 */
+    /** 每区块的移动活塞状态列表 */
     private static final String KEY_CHUNK_PISTONS = "pistons";
 
     /** 每区块的绝对刻列表 + 方块事件列表 + 移动活塞列表。 */
@@ -70,14 +61,6 @@ public final class SafeSaveStore {
             fluidTicks = List.copyOf(fluidTicks);
             blockEvents = List.copyOf(blockEvents);
             pistons = List.copyOf(pistons);
-        }
-
-        public ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks, List<SafeBlockEvent> blockEvents) {
-            this(blockTicks, fluidTicks, blockEvents, List.of());
-        }
-
-        public ChunkSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks) {
-            this(blockTicks, fluidTicks, List.of(), List.of());
         }
 
         public boolean isEmpty() {
@@ -103,18 +86,8 @@ public final class SafeSaveStore {
          * 但会重复计数并模糊语义。永不持久化。
          */
         public final Set<Long> pendingRestore = new LinkedHashSet<>();
-        /**
-         * 尚未消费的<em>旧世界级</em>方块事件（仅 v2/v3 磁盘数据迁移用）。
-         * 新格式下事件按区块存放在 {@link #chunks} 中，本字段在 v4 启动读取后保持为空。
-         */
-        public boolean blockEventsPendingRestore;
         /** 保存时的 {@code Level.subTickCount}；{@code -1} = 未知 */
         public long subTickCount = -1L;
-        /**
-         * 旧版（v2/v3）的世界级方块事件队列，按取出顺序。仅供读取旧文件时迁移；
-         * v4 不再向此列表写入新事件。
-         */
-        public final List<SafeBlockEvent> blockEvents = new ArrayList<>();
         /** 仅调试用——从不用于恢复刻 */
         public long gameTime = Long.MIN_VALUE;
 
@@ -133,12 +106,12 @@ public final class SafeSaveStore {
             for (ChunkSnapshot snapshot : this.chunks.values()) {
                 total += snapshot.total();
             }
-            return total + this.blockEvents.size();
+            return total;
         }
 
-        /** 该维度所有方块事件数量（包括旧迁移残余列表）。 */
+        /** 该维度所有方块事件数量。 */
         public int totalBlockEvents() {
-            int total = this.blockEvents.size();
+            int total = 0;
             for (ChunkSnapshot snapshot : this.chunks.values()) {
                 total += snapshot.blockEvents().size();
             }
@@ -189,15 +162,6 @@ public final class SafeSaveStore {
         int total = 0;
         for (DimensionData data : this.dimensions.values()) {
             total += data.totalBlockEvents();
-        }
-        return total;
-    }
-
-    /** 旧世界级迁移残余数量；正常 v4 生命周期为 0。 */
-    public int legacyBlockEventsCount() {
-        int total = 0;
-        for (DimensionData data : this.dimensions.values()) {
-            total += data.blockEvents.size();
         }
         return total;
     }
@@ -333,10 +297,10 @@ public final class SafeSaveStore {
     public static SafeSaveStore load(final CompoundTag root) {
         SafeSaveStore store = new SafeSaveStore();
         int version = root.getIntOr(KEY_VERSION, 0);
-        if (version < MIN_READABLE_VERSION || version > FORMAT_VERSION) {
+        if (version != FORMAT_VERSION) {
             // 未知布局：拒绝而不是悄然错误地恢复时间。
             throw new IllegalStateException("unsupported safe-save format version " + version
-                    + " (readable range " + MIN_READABLE_VERSION + ".." + FORMAT_VERSION + ")");
+                    + " (expected " + FORMAT_VERSION + ")");
         }
         root.getCompound(KEY_DEBUG).ifPresent(
                 debug -> store.setServerTickCount(debug.getIntOr(KEY_DEBUG_SERVER_TICK, -1)));
@@ -371,38 +335,6 @@ public final class SafeSaveStore {
                     });
                 }
 
-                // v4 迁移：旧世界级队列（order=-1）按其原有顺序补全局序号，并入各自区块快照。
-                // 这些区块已经加入 pendingRestore（若原本只有事件、没有计划刻，上面的循环也会加入）。
-                if (data.blockEventsPendingRestore && !data.blockEvents.isEmpty()) {
-                    long order = 0;
-                    Map<Long, List<SafeBlockEvent>> byChunk = new HashMap<>();
-                    for (SafeBlockEvent event : data.blockEvents) {
-                        long packed = ChunkPos.pack(
-                                event.x() >> 4,
-                                event.z() >> 4);
-                        long effectiveOrder = event.order() >= 0 ? event.order() : order;
-                        order++;
-                        byChunk.computeIfAbsent(packed, k -> new ArrayList<>())
-                                .add(new SafeBlockEvent(
-                                        event.blockId(), event.x(), event.y(), event.z(),
-                                        event.paramA(), event.paramB(), effectiveOrder));
-                    }
-                    for (Map.Entry<Long, List<SafeBlockEvent>> entry : byChunk.entrySet()) {
-                        long packed = entry.getKey();
-                        ChunkSnapshot existing = data.chunks.get(packed);
-                        List<SafeTick> blockTicks = existing == null ? List.of() : existing.blockTicks();
-                        List<SafeTick> fluidTicks = existing == null ? List.of() : existing.fluidTicks();
-                        List<SafeBlockEvent> merged = new ArrayList<>(
-                                existing == null ? List.of() : existing.blockEvents());
-                        merged.addAll(entry.getValue());
-                        merged.sort(BlockEventManager.COMPARE_BY_ORDER);
-                        List<SafePiston> pistons = existing == null ? List.of() : existing.pistons();
-                        data.chunks.put(packed, new ChunkSnapshot(blockTicks, fluidTicks, merged, pistons));
-                        data.pendingRestore.add(packed);
-                    }
-                    data.blockEvents.clear();
-                    data.blockEventsPendingRestore = false;
-                }
             });
         }
         return store;
