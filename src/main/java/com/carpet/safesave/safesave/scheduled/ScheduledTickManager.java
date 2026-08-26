@@ -177,21 +177,19 @@ public final class ScheduledTickManager {
     }
 
     /**
-     * 把区块容器里<em>已经过期</em>（{@code triggerTick < currentGameTime}）的计划刻按冻结起点
-     * 顺延重锚定，供 ProtectedRegion 解冻时调用。
+     * 把区块容器里的全部计划刻按 region 冻结时长顺延，供 ProtectedRegion 解冻时调用。
      *
-     * <p>与 {@link #applyTicks} 的 snapshotGameTime 公式同源：region 冻结期间全局 gameTime
-     * 继续走，已排队的绝对触发时刻会过期；解冻时按 {@code triggerTick - frozenAt} 的剩余间隔
-     * 从当前时间重新计时，未来刻不动。只重建出现过期刻的容器（{@code SS$replaceAll}），
-     * 且只有在确有变更时才替换。
+     * <p>与 {@link #applyTicks} 的 snapshotGameTime 公式同源：以 {@code frozenAt} 为暂停点，
+     * 每条刻在冻结开始时尚余的间隔从 {@code currentGameTime} 重新计时。冻结开始时已经到期的刻
+     * 在解冻后的第一个世界 tick 执行；尚未到期的刻也完整补回冻结期间经过的时间。
      */
     @SuppressWarnings("unchecked")
-    public static void rebaseOverdueTicks(final ServerLevel level,
-                                          final long packedChunkPos,
-                                          final Object blockContainer,
-                                          final Object fluidContainer,
-                                          final long frozenAt,
-                                          final long currentGameTime) {
+    public static void rebaseFrozenTicks(final ServerLevel level,
+                                         final long packedChunkPos,
+                                         final Object blockContainer,
+                                         final Object fluidContainer,
+                                         final long frozenAt,
+                                         final long currentGameTime) {
         if (frozenAt < 0L) {
             return;
         }
@@ -210,26 +208,15 @@ public final class ScheduledTickManager {
         if (queue == null) {
             return;
         }
-        boolean anyOverdue = false;
-        for (Object raw : queue) {
-            if (raw instanceof ScheduledTick<?> tick && tick.triggerTick() < currentGameTime) {
-                anyOverdue = true;
-                break;
-            }
-        }
-        if (!anyOverdue) {
-            return;
-        }
         List<ScheduledTick<?>> rebased = new ArrayList<>(queue.size());
+        boolean changed = false;
         for (Object raw : queue) {
             if (!(raw instanceof ScheduledTick<?> tick)) {
                 continue;
             }
-            long trigger = tick.triggerTick();
-            if (trigger < currentGameTime) {
-                long remaining = trigger - frozenAt;
-                trigger = currentGameTime + Math.max(remaining, 0L);
-            }
+            long remaining = tick.triggerTick() - frozenAt;
+            long trigger = currentGameTime + Math.max(remaining, 0L);
+            changed |= trigger != tick.triggerTick();
             rebased.add(new ScheduledTick<>(
                     tick.type(),
                     tick.pos(),
@@ -237,7 +224,9 @@ public final class ScheduledTickManager {
                     tick.priority(),
                     tick.subTickOrder()));
         }
-        container.SS$replaceAll(rebased);
+        if (changed) {
+            container.SS$replaceAll(rebased);
+        }
     }
 
     /**
