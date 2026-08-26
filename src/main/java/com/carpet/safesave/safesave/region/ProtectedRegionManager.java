@@ -80,17 +80,21 @@ public final class ProtectedRegionManager {
     }
 
     /**
-     * 所有区块都可执行计划刻才视为完整。
+     * 所有区块的刻容器都已就绪（已注册到 {@code LevelTicks.allContainers} 且已解包）才视为完整。
      *
      * <p>不能使用 {@code level.isPositionTickingWithEntitiesLoaded(key)}：它内部会调用
      * {@code ServerLevel.shouldTickBlocksAt}，而后者已被本功能的冻结门控改写——冻结中的区块永远
-     * 返回 {@code false}，会形成“冻结 → 完整性检查失败 → 继续冻结”的死锁。这里改用等价的底层
-     * 判据：实体已加载 + 距离管理器判定在方块刻范围内，绕过我们的门控。
+     * 返回 {@code false}，会形成“冻结 → 完整性检查失败 → 继续冻结”的死锁。
+     *
+     * <p>改用与 {@code ChunkRebuildCoordinator.rebuildNewChunks} 完全相同的就绪判据
+     * （{@code TickContainers.isReady}），还能保证 region 解冻的那一刻所有成员区块都能在
+     * <em>同一个 tick</em> 被统一重建，不会因为个别区块容器晚注册一拍而产生跨区块相位差。
      */
     private static boolean isComplete(final ServerLevel level, final ProtectedRegion region) {
+        Long2ObjectMap<?> blockContainers = TickContainers.blockContainers(level);
+        Long2ObjectMap<?> fluidContainers = TickContainers.fluidContainers(level);
         for (long key : region.chunks) {
-            if (!level.areEntitiesLoaded(key)
-                    || !level.getChunkSource().chunkMap.getDistanceManager().inBlockTickingRange(key)) {
+            if (!TickContainers.isReady(blockContainers.get(key), fluidContainers.get(key))) {
                 return false;
             }
         }
