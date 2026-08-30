@@ -1,15 +1,8 @@
 package com.carpet.safesave.debug;
 
-import com.carpet.safesave.safesave.SafeSaveManager;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.BlockEventData;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.material.Fluid;
-import net.minecraft.world.ticks.ScheduledTick;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,18 +17,6 @@ public final class DebugLog {
     }
 
     // ---------------------------------------------------------------- 辅助方法
-
-    /** 简短的维度名，如 {@code overworld}。绝不抛异常。 */
-    public static String dimensionName(final Level level) {
-        if (level == null) {
-            return "?";
-        }
-        try {
-            return level.dimension().identifier().toString();
-        } catch (Throwable ignored) {
-            return "?";
-        }
-    }
 
     /** 计划刻载荷（{@link Block} 或 {@link Fluid}）的注册表 id。 */
     public static String typeId(final Object type) {
@@ -67,9 +48,5 @@ public final class DebugLog {
         if (WARNED_ONCE.add(key)) {
             LOG.warn("[safe-save] " + format, args);
         }
-    }
-
-    public static Identifier tryParse(final String id) {
-        return Identifier.tryParse(id);
     }
 }
