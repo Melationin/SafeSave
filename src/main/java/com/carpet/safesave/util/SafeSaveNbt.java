@@ -10,7 +10,7 @@ import net.minecraft.world.level.storage.ValueOutput;
 public final class SafeSaveNbt {
     private SafeSaveNbt() {
     }
-
+    public static final String KEY_SAFE_SAVE = "safeSave";
     public static boolean enabled() {
         return com.carpet.safesave.safesave.SafeSaveManager.enabled();
     }
@@ -20,19 +20,19 @@ public final class SafeSaveNbt {
      */
     public static ValueOutput child(final ValueOutput output) {
         if (output instanceof TagValueOutput tagValueOutput) {
-            ValueOutput existing = tagValueOutput.getChild(Util.KEY_SAFE_SAVE);
+            ValueOutput existing = tagValueOutput.getChild(KEY_SAFE_SAVE);
             if (existing != null) {
                 return existing;
             }
-            return tagValueOutput.child(Util.KEY_SAFE_SAVE);
+            return tagValueOutput.child(KEY_SAFE_SAVE);
         }
-        return output.child(Util.KEY_SAFE_SAVE);
+        return output.child(KEY_SAFE_SAVE);
     }
 
     /**
      * 读取侧：没有 {@code safesave} 子节点时返回 {@code null}。
      */
     public static ValueInput childOrNull(final ValueInput input) {
-        return input.child(Util.KEY_SAFE_SAVE).orElse(null);
+        return input.child(KEY_SAFE_SAVE).orElse(null);
     }
 }

@@ -162,31 +162,32 @@ public final class BlockEventManager {
 
         ObjectLinkedOpenHashSet<BlockEventData> queue = level.blockEvents;
         List<BlockEventData> existing = new ArrayList<>(queue);
-        queue.clear();
+        try {
+            queue.clear();
 
-        Map<BlockEventData, Long> levelOrders = levelState.blockEventOrders;
-        long next = levelState.nextBlockEventOrder;
-        int restored = 0;
-        for (SafeBlockEvent entry : valid) {
-            Block block = BuiltInRegistries.BLOCK.getValue(Identifier.tryParse(entry.blockId()));
-            BlockEventData event = new BlockEventData(
-                    new BlockPos(entry.x(), entry.y(), entry.z()),
-                    block, entry.paramA(), entry.paramB());
-            queue.add(event);
-            // 若事件已存在于实时队列（重复），保留其原有序号；否则写入保存的序号。
-            levelOrders.putIfAbsent(event, entry.order());
-            if (entry.order() >= next) {
-                next = entry.order() + 1;
+            Map<BlockEventData, Long> levelOrders = levelState.blockEventOrders;
+            long next = levelState.nextBlockEventOrder;
+            int restored = 0;
+            for (SafeBlockEvent entry : valid) {
+                Block block = BuiltInRegistries.BLOCK.getValue(Identifier.tryParse(entry.blockId()));
+                BlockEventData event = new BlockEventData(
+                        new BlockPos(entry.x(), entry.y(), entry.z()),
+                        block, entry.paramA(), entry.paramB());
+                queue.add(event);
+                // 若事件已存在于实时队列（重复），保留其原有序号；否则写入保存的序号。
+                levelOrders.putIfAbsent(event, entry.order());
+                if (entry.order() >= next) {
+                    next = entry.order() + 1;
+                }
+                restored++;
             }
-            restored++;
+            levelState.nextBlockEventOrder = next;
+            session.restoredBlockEventCount.addAndGet(restored);
+            DebugLog.info("{}: restored {} block event(s) in global order ({} pre-existing kept behind them)",
+                    dimensionId(level), restored, existing.size());
+        } finally {
+            queue.addAll(existing);
         }
-        // 把原本已排队的事件重新追加到恢复的（更早的）事件之后
-        queue.addAll(existing);
-
-        levelState.nextBlockEventOrder = next;
-        session.restoredBlockEventCount.addAndGet(restored);
-        DebugLog.info("{}: restored {} block event(s) in global order ({} pre-existing kept behind them)",
-                dimensionId(level), restored, existing.size());
     }
 
     /** 世界刻日志行的调试辅助方法。 */

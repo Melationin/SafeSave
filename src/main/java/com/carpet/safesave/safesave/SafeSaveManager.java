@@ -1,7 +1,7 @@
 package com.carpet.safesave.safesave;
 
 import static com.carpet.safesave.util.DimensionIds.dimensionId;
-import static com.carpet.safesave.util.Util.KEY_SAFE_SAVE;
+import static com.carpet.safesave.util.SafeSaveNbt.KEY_SAFE_SAVE;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.rules.SafeSaveRules;

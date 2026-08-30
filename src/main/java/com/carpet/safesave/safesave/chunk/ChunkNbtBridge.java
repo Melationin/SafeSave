@@ -1,6 +1,7 @@
 package com.carpet.safesave.safesave.chunk;
 
 import static com.carpet.safesave.util.DimensionIds.dimensionId;
+import static com.carpet.safesave.util.SafeSaveNbt.KEY_SAFE_SAVE;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
@@ -10,7 +11,6 @@ import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
 import com.carpet.safesave.safesave.scheduled.SafeTickContainer;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
-import com.carpet.safesave.util.Util;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
@@ -46,7 +46,7 @@ public final class ChunkNbtBridge {
         }
         String dimension = dimensionId(level);
         long key = ChunkPos.pack(chunkData.getIntOr("xPos", 0), chunkData.getIntOr("zPos", 0));
-        CompoundTag safeSave = chunkData.getCompound(Util.KEY_SAFE_SAVE).orElse(null);
+        CompoundTag safeSave = chunkData.getCompound(KEY_SAFE_SAVE).orElse(null);
         if (safeSave == null) {
             ChunkRebuildCoordinator.removePending(levelState, key, session);
             return;

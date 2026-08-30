@@ -61,7 +61,7 @@ public final class SafeSaveFiles {
                         }
                     }
                 }
-            } catch (IOException e) {
+            } catch (IOException | RuntimeException e) {
                 DebugLog.warn("failed to scan {}: {}", dimensionsDir, e.toString());
             }
         }

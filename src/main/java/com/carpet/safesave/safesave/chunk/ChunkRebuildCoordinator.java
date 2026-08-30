@@ -15,6 +15,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,11 +81,20 @@ public final class ChunkRebuildCoordinator {
             if (!(block instanceof SafeTickContainer) || !(fluid instanceof SafeTickContainer)) {
                 continue;
             }
-            SafeSaveStore.ChunkSnapshot snapshot = levelState.pendingChunks.remove(key);
+            SafeSaveStore.ChunkSnapshot snapshot = levelState.pendingChunks.get(key);
             if (snapshot == null) {
                 continue;
             }
-            ScheduledTickManager.restoreChunkTicks(level, key, snapshot, block, fluid, session, levelState);
+            try {
+                ScheduledTickManager.restoreChunkTicks(level, key, snapshot, block, fluid, session, levelState);
+            } catch (Exception e) {
+                levelState.pendingChunks.remove(key);
+                DebugLog.warn("{}: failed to restore scheduled ticks for chunk {}, dropping its snapshot: {}",
+                        dimension, ChunkPos.unpack(key), e.toString());
+                continue;
+            }
+            // 恢复成功后才移除快照。
+            levelState.pendingChunks.remove(key);
             rebuilt++;
             blockEventsToRestore.addAll(snapshot.blockEvents());
         }
