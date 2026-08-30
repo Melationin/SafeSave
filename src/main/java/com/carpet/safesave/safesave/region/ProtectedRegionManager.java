@@ -7,12 +7,16 @@ import com.carpet.safesave.rules.SafeSaveRules;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveSession;
+import com.carpet.safesave.safesave.scheduled.SafeTickContainer;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import com.carpet.safesave.safesave.scheduled.TickContainers;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.BlockEventData;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.entity.TickingBlockEntity;
 
 /**
  * ProtectedRegion 的运行时管理（纯服务，无静态可变状态）。
@@ -20,8 +24,9 @@ import net.minecraft.server.level.ServerLevel;
  * <p>每个服务端世界刻 HEAD 调用 {@link #tick} 评估每个 region 的完整性；tick 门控热路径只查
  * {@code SafeSaveLevelState.protectedRegions.frozenChunks}（见 {@link #isChunkFrozen}）。
  *
- * <p>解冻时对 region 内的全部计划刻按冻结时长做顺延重锚定（见
- * {@link ScheduledTickManager#rebaseFrozenTicks}），使 region 内的计划刻倒计时随 region 一起暂停。
+ * <p>冻结期间每经过一个正常世界刻，就把当时仍加载的区块计划刻后移一刻（见
+ * {@link ScheduledTickManager#shiftFrozenTicksOneTick}）。卸载区块由原版 SavedTick 相对 delay
+ * 自己暂停，从而避免解冻时统一重锚造成常驻区块与重载区块的相位分裂。
  */
 public final class ProtectedRegionManager {
 
@@ -50,6 +55,7 @@ public final class ProtectedRegionManager {
             for (ProtectedRegion region : regions.byName.values()) {
                 region.frozen = false;
                 region.frozenAt = -1L;
+                region.completeFrozenTicks = 0;
             }
             regions.frozenChunks.clear();
             return;
@@ -59,30 +65,43 @@ public final class ProtectedRegionManager {
             return;
         }
         long gameTime = level.getGameTime();
-        boolean anyTransition = false;
         for (ProtectedRegion region : regions.byName.values()) {
-            boolean complete = isComplete(level, region);
-            if (complete && region.frozen) {
+            Readiness readiness = readiness(level, levelState, region);
+            if (readiness.complete() && region.frozen) {
+                if (!level.tickRateManager().runsNormally()) {
+                    continue;
+                }
+                if (region.completeFrozenTicks == 0) {
+                    region.completeFrozenTicks = 1;
+                    DebugLog.info("{}: ProtectedRegion '{}' physically complete at gameTime={}, "
+                                    + "holding frozen for one settle tick ({})",
+                            dimensionId(level), region.name, gameTime, readiness.describe());
+                    continue;
+                }
                 long frozenAt = region.frozenAt;
-                rebaseRegionTicks(level, region, gameTime);
                 region.frozen = false;
                 region.frozenAt = -1L;
-                anyTransition = true;
+                region.completeFrozenTicks = 0;
+                QueueStats queues = queueStats(level, region);
                 DebugLog.info("{}: ProtectedRegion '{}' complete again - unfrozen at gameTime={} "
-                                + "(frozenAt={}, duration={})",
+                                + "(frozenAt={}, duration={}, queues={})",
                         dimensionId(level), region.name, gameTime, frozenAt,
-                        frozenAt < 0L ? 0L : Math.max(gameTime - frozenAt, 0L));
-            } else if (!complete && !region.frozen) {
+                        frozenAt < 0L ? 0L : Math.max(gameTime - frozenAt, 0L), queues.describe());
+            } else if (!readiness.complete()) {
+                region.completeFrozenTicks = 0;
+                if (region.frozen) {
+                    continue;
+                }
                 region.frozen = true;
                 region.frozenAt = gameTime;
-                anyTransition = true;
-                DebugLog.info("{}: ProtectedRegion '{}' incomplete at gameTime={} - freezing {} chunk(s)",
-                        dimensionId(level), region.name, gameTime, region.chunks.size());
+                QueueStats queues = queueStats(level, region);
+                DebugLog.info("{}: ProtectedRegion '{}' incomplete at gameTime={} - freezing {} chunk(s) "
+                                + "({}; queues={})",
+                        dimensionId(level), region.name, gameTime, region.chunks.size(),
+                        readiness.describe(), queues.describe());
             }
         }
-        if (anyTransition || !regions.frozenChunks.isEmpty()) {
-            regions.rebuildFrozenChunks();
-        }
+        regions.rebuildFrozenChunks();
     }
 
     /**
@@ -98,41 +117,171 @@ public final class ProtectedRegionManager {
      * {@code areEntitiesLoaded}。这样 region 解冻的同一个 tick 中，计划刻、方块事件、方块实体与
      * 实体都已经具备运行条件。
      */
-    private static boolean isComplete(final ServerLevel level, final ProtectedRegion region) {
+    private static Readiness readiness(final ServerLevel level,
+                                       final SafeSaveLevelState levelState,
+                                       final ProtectedRegion region) {
         Long2ObjectMap<?> blockContainers = TickContainers.blockContainers(level);
         Long2ObjectMap<?> fluidContainers = TickContainers.fluidContainers(level);
         ServerChunkCache chunkSource = level.getChunkSource();
+        int containersMissing = 0;
+        int snapshotsPending = 0;
+        int entitiesMissing = 0;
+        int rangeMissing = 0;
+        int tickingFutureMissing = 0;
         for (long key : region.chunks) {
             if (!TickContainers.isReady(blockContainers.get(key), fluidContainers.get(key))) {
-                return false;
+                containersMissing++;
             }
-            if (!level.areEntitiesLoaded(key)
-                    || !chunkSource.chunkMap.getDistanceManager().inBlockTickingRange(key)) {
-                return false;
+            if (levelState.pendingChunks.containsKey(key)) {
+                snapshotsPending++;
+            }
+            if (!level.areEntitiesLoaded(key)) {
+                entitiesMissing++;
+            }
+            if (!chunkSource.chunkMap.getDistanceManager().inBlockTickingRange(key)) {
+                rangeMissing++;
             }
             ChunkHolder holder = chunkSource.getVisibleChunkIfPresent(key);
             if (holder == null
                     || !holder.getTickingChunkFuture()
                     .getNow(ChunkHolder.UNLOADED_LEVEL_CHUNK)
                     .isSuccess()) {
-                return false;
+                tickingFutureMissing++;
             }
         }
-        return true;
+        return new Readiness(containersMissing, snapshotsPending, entitiesMissing,
+                rangeMissing, tickingFutureMissing);
     }
 
-    private static void rebaseRegionTicks(final ServerLevel level,
-                                          final ProtectedRegion region,
-                                          final long currentGameTime) {
-        if (region.frozenAt < 0L) {
+    /**
+     * 在 SafeSave 的新加载区块恢复之后、ServerLevel.tick 真正开始之前调用。
+     * 每个正常世界刻把已加载冻结区块的本地计划刻时钟向后移动一刻。
+     */
+    public static void pauseFrozenScheduledTicks(final ServerLevel level,
+                                                 final SafeSaveLevelState levelState) {
+        if (!SafeSaveRules.safeSaveRegions || !level.tickRateManager().runsNormally()) {
             return;
         }
         Long2ObjectMap<?> blockContainers = TickContainers.blockContainers(level);
         Long2ObjectMap<?> fluidContainers = TickContainers.fluidContainers(level);
+        int shiftedChunks = 0;
+        int shiftedBlocks = 0;
+        int shiftedFluids = 0;
+        for (long key : levelState.protectedRegions.frozenChunks) {
+            if (!TickContainers.isReady(blockContainers.get(key), fluidContainers.get(key))) {
+                continue;
+            }
+            ScheduledTickManager.ShiftResult shifted = ScheduledTickManager.shiftFrozenTicksOneTick(
+                    blockContainers.get(key), fluidContainers.get(key));
+            if (shifted.blockTicks() != 0 || shifted.fluidTicks() != 0) {
+                shiftedChunks++;
+                shiftedBlocks += shifted.blockTicks();
+                shiftedFluids += shifted.fluidTicks();
+            }
+        }
+        long gameTime = level.getGameTime();
+        if (shiftedChunks > 0 && gameTime % 20L == 0L) {
+            DebugLog.info("{}: ProtectedRegion local clock paused at gameTime={} - shifted {} block + {} fluid "
+                            + "scheduled tick(s) in {} loaded frozen chunk(s)",
+                    dimensionId(level), gameTime, shiftedBlocks, shiftedFluids, shiftedChunks);
+        }
+    }
+
+    /**
+     * {@code ServerChunkCache.tick} 会在计划刻/区块刻之后更新 ticket、holder 与卸载状态。
+     * 因此在方块事件、实体和方块实体阶段之前再检查一次；这里只允许 active -> frozen，绝不在
+     * 世界刻中途解冻。这样后半刻不会继续使用 HEAD 时已经过期的完整性结论。
+     */
+    public static void freezeIfBecameIncompleteAfterChunkSource(final ServerLevel level) {
+        if (!SafeSaveRules.safeSaveRegions || !level.tickRateManager().runsNormally()) {
+            return;
+        }
+        SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
+        ProtectedRegionState regions = levelState.protectedRegions;
+        boolean changed = false;
+        for (ProtectedRegion region : regions.byName.values()) {
+            Readiness readiness = readiness(level, levelState, region);
+            if (readiness.complete()) {
+                continue;
+            }
+            if (region.frozen) {
+                if (region.completeFrozenTicks != 0) {
+                    region.completeFrozenTicks = 0;
+                    DebugLog.info("{}: ProtectedRegion '{}' settle aborted after chunkSource at gameTime={} ({})",
+                            dimensionId(level), region.name, level.getGameTime(), readiness.describe());
+                }
+                continue;
+            }
+            region.frozen = true;
+            region.frozenAt = level.getGameTime();
+            region.completeFrozenTicks = 0;
+            changed = true;
+            DebugLog.warn("{}: ProtectedRegion '{}' became incomplete after chunkSource in gameTime={}; "
+                            + "freezing before block events/entities/block entities ({})",
+                    dimensionId(level), region.name, level.getGameTime(), readiness.describe());
+        }
+        if (changed) {
+            regions.rebuildFrozenChunks();
+        }
+    }
+
+    private static QueueStats queueStats(final ServerLevel level, final ProtectedRegion region) {
+        Long2ObjectMap<?> blockContainers = TickContainers.blockContainers(level);
+        Long2ObjectMap<?> fluidContainers = TickContainers.fluidContainers(level);
+        int blockTicks = 0;
+        int fluidTicks = 0;
         for (long key : region.chunks) {
-            ScheduledTickManager.rebaseFrozenTicks(level, key,
-                    blockContainers.get(key), fluidContainers.get(key),
-                    region.frozenAt, currentGameTime);
+            blockTicks += queueSize(blockContainers.get(key));
+            fluidTicks += queueSize(fluidContainers.get(key));
+        }
+        int blockEvents = 0;
+        for (BlockEventData event : level.blockEvents) {
+            if (region.contains(ChunkPos.pack(event.pos()))) {
+                blockEvents++;
+            }
+        }
+        int blockEntities = 0;
+        for (TickingBlockEntity ticker : level.blockEntityTickers) {
+            if (!ticker.isRemoved() && ticker.getPos() != null
+                    && region.contains(ChunkPos.pack(ticker.getPos()))) {
+                blockEntities++;
+            }
+        }
+        return new QueueStats(blockTicks, fluidTicks, blockEvents, blockEntities);
+    }
+
+    private static int queueSize(final Object container) {
+        if (!(container instanceof SafeTickContainer safe) || safe.SS$hasPendingTicks()) {
+            return 0;
+        }
+        java.util.List<?> queue = safe.SS$snapshotQueue();
+        return queue == null ? 0 : queue.size();
+    }
+
+    private record Readiness(int containersMissing,
+                             int snapshotsPending,
+                             int entitiesMissing,
+                             int rangeMissing,
+                             int tickingFutureMissing) {
+        private boolean complete() {
+            return this.containersMissing == 0 && this.snapshotsPending == 0
+                    && this.entitiesMissing == 0 && this.rangeMissing == 0
+                    && this.tickingFutureMissing == 0;
+        }
+
+        private String describe() {
+            return "missing: containers=" + this.containersMissing
+                    + ", snapshots=" + this.snapshotsPending
+                    + ", entities=" + this.entitiesMissing
+                    + ", blockRange=" + this.rangeMissing
+                    + ", tickingFuture=" + this.tickingFutureMissing;
+        }
+    }
+
+    private record QueueStats(int blockTicks, int fluidTicks, int blockEvents, int blockEntities) {
+        private String describe() {
+            return "blockTicks=" + this.blockTicks + ", fluidTicks=" + this.fluidTicks
+                    + ", blockEvents=" + this.blockEvents + ", blockEntities=" + this.blockEntities;
         }
     }
 }

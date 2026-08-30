@@ -23,6 +23,11 @@ public final class ProtectedRegion {
     public boolean frozen;
     /** 运行态：本次冻结开始时的 {@code Level.gameTime}；{@code -1} = 未冻结。 */
     public long frozenAt = -1L;
+    /**
+     * 运行态：物理完整且没有待恢复快照后，已经完整经历的本地冻结刻数。
+     * 首次完整时仍保持冻结一刻，让计划刻/方块事件恢复与方块实体注册先稳定下来。
+     */
+    public int completeFrozenTicks;
 
     public ProtectedRegion(final String name) {
         this.name = name;

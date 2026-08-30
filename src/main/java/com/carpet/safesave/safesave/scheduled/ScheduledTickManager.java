@@ -177,56 +177,50 @@ public final class ScheduledTickManager {
     }
 
     /**
-     * 把区块容器里的全部计划刻按 region 冻结时长顺延，供 ProtectedRegion 解冻时调用。
+     * 把一个已加载区块内的全部计划刻后移一刻，作为 ProtectedRegion 的本地暂停时钟。
      *
-     * <p>与 {@link #applyTicks} 的 snapshotGameTime 公式同源：以 {@code frozenAt} 为暂停点，
-     * 每条刻在冻结开始时尚余的间隔从 {@code currentGameTime} 重新计时。冻结开始时已经到期的刻
-     * 在解冻后的第一个世界 tick 执行；尚未到期的刻也完整补回冻结期间经过的时间。
+     * <p>不能等到 region 解冻时再按 {@code frozenAt} 一次性重锚：区块卸载时，原版
+     * {@link net.minecraft.world.ticks.LevelChunkTicks#pack(long)} 已把绝对触发时刻转换成相对
+     * delay，重载时又会相对当前 gameTime 解包。解冻时再次统一重锚会让“期间重载过的区块”
+     * 与“一直常驻的区块”获得不同的补偿量。每个正常世界刻只移动当时已加载的容器，则卸载区块
+     * 自然由原版 delay 暂停，常驻区块由这里暂停，两条路径保持同一剩余延迟。
+     *
+     * @return 本次实际移动的方块刻与流体刻数量
      */
-    @SuppressWarnings("unchecked")
-    public static void rebaseFrozenTicks(final ServerLevel level,
-                                         final long packedChunkPos,
-                                         final Object blockContainer,
-                                         final Object fluidContainer,
-                                         final long frozenAt,
-                                         final long currentGameTime) {
-        if (frozenAt < 0L) {
-            return;
-        }
-        rebaseContainer((SafeTickContainer) blockContainer, frozenAt, currentGameTime);
-        rebaseContainer((SafeTickContainer) fluidContainer, frozenAt, currentGameTime);
+    public static ShiftResult shiftFrozenTicksOneTick(final Object blockContainer,
+                                                       final Object fluidContainer) {
+        int blockTicks = blockContainer instanceof SafeTickContainer safe
+                ? shiftContainerOneTick(safe) : 0;
+        int fluidTicks = fluidContainer instanceof SafeTickContainer safe
+                ? shiftContainerOneTick(safe) : 0;
+        return new ShiftResult(blockTicks, fluidTicks);
     }
 
-    @SuppressWarnings("unchecked")
-    private static void rebaseContainer(final SafeTickContainer container,
-                                        final long frozenAt,
-                                        final long currentGameTime) {
+    private static int shiftContainerOneTick(final SafeTickContainer container) {
         if (container == null || container.SS$hasPendingTicks()) {
-            return;
+            return 0;
         }
         List<?> queue = container.SS$snapshotQueue();
-        if (queue == null) {
-            return;
+        if (queue == null || queue.isEmpty()) {
+            return 0;
         }
-        List<ScheduledTick<?>> rebased = new ArrayList<>(queue.size());
-        boolean changed = false;
+        List<ScheduledTick<?>> shifted = new ArrayList<>(queue.size());
         for (Object raw : queue) {
             if (!(raw instanceof ScheduledTick<?> tick)) {
                 continue;
             }
-            long remaining = tick.triggerTick() - frozenAt;
-            long trigger = currentGameTime + Math.max(remaining, 0L);
-            changed |= trigger != tick.triggerTick();
-            rebased.add(new ScheduledTick<>(
+            shifted.add(new ScheduledTick<>(
                     tick.type(),
                     tick.pos(),
-                    trigger,
+                    tick.triggerTick() == Long.MAX_VALUE ? Long.MAX_VALUE : tick.triggerTick() + 1L,
                     tick.priority(),
                     tick.subTickOrder()));
         }
-        if (changed) {
-            container.SS$replaceAll(rebased);
-        }
+        container.SS$replaceAll(shifted);
+        return shifted.size();
+    }
+
+    public record ShiftResult(int blockTicks, int fluidTicks) {
     }
 
     /**

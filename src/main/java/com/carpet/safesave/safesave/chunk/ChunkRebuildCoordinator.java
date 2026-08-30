@@ -55,9 +55,9 @@ public final class ChunkRebuildCoordinator {
         String dimension = dimensionId(level);
         LongSet ready = TickContainers.collectReadyChunks(level);
 
-        // ProtectedRegion 冻结中的区块刻意不参与重建：不消费 pending、不进入 knownChunks、
-        // 不参与实体顺序重排。region 解冻的那一刻它们会重新作为“新加载”出现，与 region 内
-        // 其他区块一起重建（计划刻/方块事件/实体顺序一起恢复）。
+        // ProtectedRegion 冻结中的区块仍不进入 knownChunks，也不参与实体顺序重排；但下面会在
+        // 它们仍冻结时提前消费 pending 并恢复计划刻/方块事件。这样恢复结果至少完整稳定一个刻后
+        // region 才会放行，而不是在解冻 HEAD 临时重建、紧接着就在同一刻执行。
         LongOpenHashSet readyNonFrozen = new LongOpenHashSet(ready.size());
         for (long key : ready) {
             if (!ProtectedRegionManager.isChunkFrozen(level, key)) {
@@ -74,9 +74,9 @@ public final class ChunkRebuildCoordinator {
         newKeys.removeAll(previous);
 
         LongOpenHashSet candidates = new LongOpenHashSet();
-        // 只处理“已就绪且处于待恢复映射”的区块。newKeys 负责识别新加载，
-        // 而 ready ∩ pending 额外兜底“卸载→重载发生在两个正常 tick 之间、未从 previous 消失”的边界。
-        for (long boxed : readyNonFrozen) {
+        // pending 恢复使用全部 ready 区块，包括 ProtectedRegion 冻结区块。冻结门控保证恢复出的内容
+        // 不会提前执行；ProtectedRegionManager 会等 pending 消失并再稳定一个完整刻才解冻。
+        for (long boxed : ready) {
             if (levelState.pendingChunks.containsKey(boxed)) {
                 candidates.add(boxed);
             }

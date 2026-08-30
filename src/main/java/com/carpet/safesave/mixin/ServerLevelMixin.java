@@ -58,6 +58,19 @@ public abstract class ServerLevelMixin implements ServerLevelTickListAccess, Saf
     }
 
     /**
+     * chunkSource 会在世界刻中段应用 ticket/holder 变化。计划刻和区块刻已经结束后，
+     * 在方块事件开始前只允许 Region 收紧为冻结，防止后半刻沿用 HEAD 的过期状态。
+     */
+    @Inject(
+            method = "tick",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/server/level/ServerLevel;runBlockEvents()V")
+    )
+    private void SS$recheckRegionsAfterChunkSource(final BooleanSupplier haveTime, final CallbackInfo ci) {
+        ProtectedRegionManager.freezeIfBecameIncompleteAfterChunkSource((ServerLevel) (Object) this);
+    }
+
+    /**
      * {@code ServerLevel.blockEvent} 的 TAIL：为每个成功加入队列的事件分配全局顺序号，
      * 供按区块保存方块事件后重建世界级执行顺序。
      */

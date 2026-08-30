@@ -242,17 +242,21 @@ public final class SafeSaveManager {
         // ProtectedRegion 完整性评估每个世界刻 HEAD 都运行（包括全局冻结期间），
         // 这样 /tick freeze 期间加载好区块后 region 状态也能跟上。
         ProtectedRegionManager.tick(level, session, levelState);
-        if (!enabled()) {
-            return;
+        if (enabled()) {
+            // 活塞刻顺序重建必须在冻结期间也运行：ServerLevel.tick 本身不受 tickRateManager 门控，
+            // 而 PME loadAdditional 发生在区块加载时（可能早于第一个非冻结 tick）。
+            PistonManager.onLevelTickStart(level, session, levelState);
         }
-        // 活塞刻顺序重建必须在冻结期间也运行：ServerLevel.tick 本身不受 tickRateManager 门控，
-        // 而 PME loadAdditional 发生在区块加载时（可能早于第一个非冻结 tick）。
-        PistonManager.onLevelTickStart(level, session, levelState);
         if (!level.tickRateManager().runsNormally()) {
             return;
         }
-        Set<Long> newChunks = ChunkRebuildCoordinator.rebuildNewChunks(level, session, levelState);
-        EntityOrderManager.rebuildChunks(level, newChunks);
+        if (enabled()) {
+            Set<Long> newChunks = ChunkRebuildCoordinator.rebuildNewChunks(level, session, levelState);
+            EntityOrderManager.rebuildChunks(level, newChunks);
+        }
+        // 必须放在计划刻恢复之后：冻结区块刚从 NBT 恢复出的刻也要为当前这个本地冻结刻后移，
+        // 随后 ServerLevel.tick 才会推进 gameTime 并尝试执行计划刻。
+        ProtectedRegionManager.pauseFrozenScheduledTicks(level, levelState);
     }
 
     /**
