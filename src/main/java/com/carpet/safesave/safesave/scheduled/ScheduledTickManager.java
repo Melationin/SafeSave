@@ -177,53 +177,6 @@ public final class ScheduledTickManager {
     }
 
     /**
-     * 把一个已加载区块内的全部计划刻后移一刻，作为 ProtectedRegion 的本地暂停时钟。
-     *
-     * <p>不能等到 region 解冻时再按 {@code frozenAt} 一次性重锚：区块卸载时，原版
-     * {@link net.minecraft.world.ticks.LevelChunkTicks#pack(long)} 已把绝对触发时刻转换成相对
-     * delay，重载时又会相对当前 gameTime 解包。解冻时再次统一重锚会让“期间重载过的区块”
-     * 与“一直常驻的区块”获得不同的补偿量。每个正常世界刻只移动当时已加载的容器，则卸载区块
-     * 自然由原版 delay 暂停，常驻区块由这里暂停，两条路径保持同一剩余延迟。
-     *
-     * @return 本次实际移动的方块刻与流体刻数量
-     */
-    public static ShiftResult shiftFrozenTicksOneTick(final Object blockContainer,
-                                                       final Object fluidContainer) {
-        int blockTicks = blockContainer instanceof SafeTickContainer safe
-                ? shiftContainerOneTick(safe) : 0;
-        int fluidTicks = fluidContainer instanceof SafeTickContainer safe
-                ? shiftContainerOneTick(safe) : 0;
-        return new ShiftResult(blockTicks, fluidTicks);
-    }
-
-    private static int shiftContainerOneTick(final SafeTickContainer container) {
-        if (container == null || container.SS$hasPendingTicks()) {
-            return 0;
-        }
-        List<?> queue = container.SS$snapshotQueue();
-        if (queue == null || queue.isEmpty()) {
-            return 0;
-        }
-        List<ScheduledTick<?>> shifted = new ArrayList<>(queue.size());
-        for (Object raw : queue) {
-            if (!(raw instanceof ScheduledTick<?> tick)) {
-                continue;
-            }
-            shifted.add(new ScheduledTick<>(
-                    tick.type(),
-                    tick.pos(),
-                    tick.triggerTick() == Long.MAX_VALUE ? Long.MAX_VALUE : tick.triggerTick() + 1L,
-                    tick.priority(),
-                    tick.subTickOrder()));
-        }
-        container.SS$replaceAll(shifted);
-        return shifted.size();
-    }
-
-    public record ShiftResult(int blockTicks, int fluidTicks) {
-    }
-
-    /**
      * 捕获单个区块的计划刻（方块刻与流体刻分开）。
      *
      * <p>协调层负责把返回结果与方块事件快照合并成 {@link SafeSaveStore.ChunkSnapshot}，

@@ -82,7 +82,7 @@ public final class SafeSaveStore {
         public long subTickCount = -1L;
         /** 仅调试用——从不用于恢复刻 */
         public long gameTime = Long.MIN_VALUE;
-        /** ProtectedRegion 定义的<em>不透明</em> NBT 列表；编解码在 {@code ProtectedRegionCodec}。 */
+        /** ProtectedRegion 定义及启动目标标记的不透明 NBT 列表；编解码在 {@code ProtectedRegionCodec}。 */
         public ListTag regions;
     }
 

@@ -5,7 +5,13 @@
   "carpet.rule.safeSave.name": "安全保存",
   "carpet.rule.safeSave.desc": "重启后无损恢复计划刻与方块事件：把绝对 triggerTick、全局 subTickOrder、Level.subTickCount 以及有序的方块事件队列存入 <world>/safesave.dat。服务器会在第一次 tick 前 freeze 以便检查恢复结果，确认后用 '/tick unfreeze' 继续。",
   "carpet.rule.safeSaveRegions.name": "安全保存保护区",
-  "carpet.rule.safeSaveRegions.desc": "启用 ProtectedRegion 同步：一个区域只有在其全部区块都可 tick 时才整体 tick，任一区块不可 tick 就冻结整个区域。",
+  "carpet.rule.safeSaveRegions.desc": "保存时记录完整加载的 ProtectedRegion；region 解冻模式下，重启会全局冻结并等待这些区域再次完整加载。",
   "carpet.rule.safeSaveUnfreeze.name": "安全保存解冻模式",
-  "carpet.rule.safeSaveUnfreeze.desc": "启动冻结策略：no_freeze（不冻结）、manual（冻结一次，/tick unfreeze 手动解冻）、region（按 ProtectedRegion 解冻，预留）。"
+  "carpet.rule.safeSaveUnfreeze.desc": "启动冻结策略：no_freeze（不冻结）、manual（手动解冻）、region（等待保存时完整加载的 ProtectedRegion 后自动解冻）。",
+  "carpet.rule.safeSaveRegionTimeout.name": "保护区启动等待超时",
+  "carpet.rule.safeSaveRegionTimeout.desc": "region 解冻模式等待 ProtectedRegion 完整加载的最大服务器刻数；0 表示立即超时放行。",
+  "safesave.message.startup_frozen": "[SafeSave] 正在等待保存时完整加载的区域恢复，游戏刻暂时冻结。最多再等待 %s 个服务器刻（约 %s 秒）便会自动解冻。",
+  "safesave.message.startup_unfrozen.complete": "[SafeSave] 所需区域已完整加载，游戏已自动解冻。",
+  "safesave.message.startup_unfrozen.timeout": "[SafeSave] 区域加载等待已超时，游戏已自动解冻（已加载 %s/%s 个区域）。",
+  "safesave.message.startup_unfrozen.manual": "[SafeSave] 启动区域等待已被手动取消，游戏已解冻。"
 }

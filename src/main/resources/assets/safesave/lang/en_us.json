@@ -5,7 +5,13 @@
   "carpet.rule.safeSave.name": "Safe Save",
   "carpet.rule.safeSave.desc": "Persist scheduled ticks and block events losslessly across a restart. Absolute triggerTick, global subTickOrder, Level.subTickCount and the ordered block-event queue are stored in <world>/safesave.dat. The server freezes before its first tick so the restored state can be inspected; run '/tick unfreeze' to resume.",
   "carpet.rule.safeSaveRegions.name": "SafeSave Protected Regions",
-  "carpet.rule.safeSaveRegions.desc": "Enable ProtectedRegion tick synchronization. A region only ticks when all of its chunks are tickable; otherwise the entire region freezes.",
+  "carpet.rule.safeSaveRegions.desc": "Record fully loaded ProtectedRegions when saving; region mode globally freezes startup until those regions are fully loaded again.",
   "carpet.rule.safeSaveUnfreeze.name": "SafeSave Unfreeze Mode",
-  "carpet.rule.safeSaveUnfreeze.desc": "Startup freeze strategy: no_freeze (never freeze), manual (freeze once, /tick unfreeze), region (unfreeze by ProtectedRegion, reserved)."
+  "carpet.rule.safeSaveUnfreeze.desc": "Startup freeze strategy: no_freeze, manual (/tick unfreeze), or region (automatically unfreeze after saved ProtectedRegions load).",
+  "carpet.rule.safeSaveRegionTimeout.name": "Protected Region Startup Timeout",
+  "carpet.rule.safeSaveRegionTimeout.desc": "Maximum server ticks to wait for saved ProtectedRegions in region mode; 0 releases immediately.",
+  "safesave.message.startup_frozen": "[SafeSave] Waiting for the regions that were fully loaded at the last save. Game ticks are temporarily frozen and will automatically resume in at most %s server ticks (about %s seconds).",
+  "safesave.message.startup_unfrozen.complete": "[SafeSave] All required regions are fully loaded; game ticks have resumed automatically.",
+  "safesave.message.startup_unfrozen.timeout": "[SafeSave] The region loading wait timed out; game ticks have resumed automatically (%s/%s regions loaded).",
+  "safesave.message.startup_unfrozen.manual": "[SafeSave] The startup region wait was cancelled manually; game ticks have resumed."
 }

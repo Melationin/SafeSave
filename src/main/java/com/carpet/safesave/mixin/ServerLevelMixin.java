@@ -5,14 +5,10 @@ import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveManager;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.entity.ServerLevelTickListAccess;
-import com.carpet.safesave.safesave.region.ProtectedRegionManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.BlockEventData;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.entity.EntityTickList;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -20,7 +16,6 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.function.BooleanSupplier;
 
@@ -58,19 +53,6 @@ public abstract class ServerLevelMixin implements ServerLevelTickListAccess, Saf
     }
 
     /**
-     * chunkSource 会在世界刻中段应用 ticket/holder 变化。计划刻和区块刻已经结束后，
-     * 在方块事件开始前只允许 Region 收紧为冻结，防止后半刻沿用 HEAD 的过期状态。
-     */
-    @Inject(
-            method = "tick",
-            at = @At(value = "INVOKE",
-                    target = "Lnet/minecraft/server/level/ServerLevel;runBlockEvents()V")
-    )
-    private void SS$recheckRegionsAfterChunkSource(final BooleanSupplier haveTime, final CallbackInfo ci) {
-        ProtectedRegionManager.freezeIfBecameIncompleteAfterChunkSource((ServerLevel) (Object) this);
-    }
-
-    /**
      * {@code ServerLevel.blockEvent} 的 TAIL：为每个成功加入队列的事件分配全局顺序号，
      * 供按区块保存方块事件后重建世界级执行顺序。
      */
@@ -80,48 +62,4 @@ public abstract class ServerLevelMixin implements ServerLevelTickListAccess, Saf
         BlockEventManager.onBlockEvent(self, new BlockEventData(pos, block, b0, b1));
     }
 
-    /**
-     * ProtectedRegion 门控：冻结 region 的区块不执行计划刻/方块事件/方块实体
-     * （vanilla 这三类 tick 都经由 {@code ServerLevel.shouldTickBlocksAt} 判定）。
-     */
-    @Inject(method = "shouldTickBlocksAt(J)Z", at = @At("HEAD"), cancellable = true)
-    private void SS$gateShouldTickBlocksAt(final long chunkPos, final CallbackInfoReturnable<Boolean> cir) {
-        if (ProtectedRegionManager.isChunkFrozen((ServerLevel) (Object) this, chunkPos)) {
-            cir.setReturnValue(false);
-        }
-    }
-
-    /**
-     * ProtectedRegion 门控：随机刻/雨雪/冰直接走 {@code ServerLevel.tickChunk}，
-     * 不经过 {@code shouldTickBlocksAt}，需要单独拦截。
-     */
-    @Inject(method = "tickChunk", at = @At("HEAD"), cancellable = true)
-    private void SS$gateTickChunk(final LevelChunk chunk, final int tickSpeed, final CallbackInfo ci) {
-        if (ProtectedRegionManager.isChunkFrozen((ServerLevel) (Object) this, chunk.getPos().pack())) {
-            ci.cancel();
-        }
-    }
-
-    /**
-     * ProtectedRegion 门控：实体 tick。玩家始终 tick；其余实体所在区块被冻结时暂停。
-     */
-    @Inject(method = "tickNonPassenger", at = @At("HEAD"), cancellable = true)
-    private void SS$gateTickNonPassenger(final Entity entity, final CallbackInfo ci) {
-        if (!(entity instanceof ServerPlayer)
-                && entity.level() == (Object) this
-                && ProtectedRegionManager.isChunkFrozen((ServerLevel) (Object) this, entity.chunkPosition().pack())) {
-            ci.cancel();
-        }
-    }
-
-    /**
-     * ProtectedRegion 门控：雷暴。属于 {@code tickSpawningChunk} 路径，不经过
-     * {@code shouldTickBlocksAt}。
-     */
-    @Inject(method = "tickThunder", at = @At("HEAD"), cancellable = true)
-    private void SS$gateTickThunder(final LevelChunk chunk, final CallbackInfo ci) {
-        if (ProtectedRegionManager.isChunkFrozen((ServerLevel) (Object) this, chunk.getPos().pack())) {
-            ci.cancel();
-        }
-    }
 }

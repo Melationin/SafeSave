@@ -25,6 +25,12 @@ public final class SafeSaveSession {
     public SafeSaveStore store;
     /** 在首刻前冻结被处理之前为 {@code true}。 */
     public boolean freezeArmed = true;
+    /** region 解冻模式的启动全局冻结屏障是否仍在等待。 */
+    public boolean startupRegionBarrierActive;
+    /** 屏障开始时的 {@code MinecraftServer.tickCount}；全局冻结期间仍会推进。 */
+    public int startupRegionBarrierStartedAt = -1;
+    /** 上次输出屏障进度的 elapsed server tick。 */
+    public int startupRegionBarrierLastLogAt = -1;
 
     /** 供 {@code /safesave status} 使用的诊断数据（从区块 NBT 读取的计数）。 */
     public final AtomicInteger loadedTickCount = new AtomicInteger();
@@ -54,18 +60,10 @@ public final class SafeSaveSession {
         current = session;
     }
 
-    /** 创建并绑定一个空会话。 */
+    /** 创建并绑定一个空会话（新对象字段均为默认值，无需重置）。 */
     public static SafeSaveSession begin() {
         SafeSaveSession session = new SafeSaveSession();
         session.store = new SafeSaveStore();
-        session.freezeArmed = true;
-        session.loadedTickCount.set(0);
-        session.loadedBlockEventCount.set(0);
-        session.restoredTickCount.set(0);
-        session.droppedTickCount.set(0);
-        session.restoredBlockEventCount.set(0);
-        session.droppedBlockEventCount.set(0);
-        session.pistonOrderGeneration.set(0);
         bind(session);
         return session;
     }

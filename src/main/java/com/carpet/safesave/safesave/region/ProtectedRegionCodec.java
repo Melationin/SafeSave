@@ -8,12 +8,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * ProtectedRegion 定义的 NBT 编解码（只持久化 name + chunks；frozen/frozenAt 是运行态）。
+ * ProtectedRegion 定义及“上次保存时完整加载”标记的 NBT 编解码。
  */
 public final class ProtectedRegionCodec {
 
     private static final String KEY_NAME = "name";
     private static final String KEY_CHUNKS = "chunks";
+    private static final String KEY_REQUIRED_AT_STARTUP = "required_at_startup";
 
     private ProtectedRegionCodec() {
     }
@@ -25,6 +26,7 @@ public final class ProtectedRegionCodec {
             CompoundTag tag = new CompoundTag();
             tag.putString(KEY_NAME, region.name);
             tag.put(KEY_CHUNKS, new LongArrayTag(region.chunks.toLongArray()));
+            tag.putBoolean(KEY_REQUIRED_AT_STARTUP, region.requiredAtStartup);
             list.add(tag);
         }
         return list;
@@ -48,6 +50,7 @@ public final class ProtectedRegionCodec {
                 for (long key : arr) {
                     region.chunks.add(key);
                 }
+                region.requiredAtStartup = tag.getBooleanOr(KEY_REQUIRED_AT_STARTUP, false);
                 out.put(name, region);
             });
         }

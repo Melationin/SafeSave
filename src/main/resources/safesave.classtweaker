@@ -4,7 +4,6 @@ accessible field net/minecraft/world/level/Level subTickCount J
 accessible field net/minecraft/world/level/Level blockEntityTickers Ljava/util/List;
 accessible field net/minecraft/world/level/storage/TagValueOutput output Lnet/minecraft/nbt/CompoundTag;
 accessible field net/minecraft/server/level/ServerLevel blockEvents Lit/unimi/dsi/fastutil/objects/ObjectLinkedOpenHashSet;
-accessible method net/minecraft/server/level/ServerChunkCache getVisibleChunkIfPresent (J)Lnet/minecraft/server/level/ChunkHolder;
 accessible method net/minecraft/world/level/storage/TagValueOutput <init> (Lnet/minecraft/util/ProblemReporter;Lcom/mojang/serialization/DynamicOps;Lnet/minecraft/nbt/CompoundTag;)V
 
 inject-interface net/minecraft/world/level/storage/TagValueOutput com/carpet/safesave/util/ValueOutputAccess

@@ -4,6 +4,7 @@ import static com.carpet.safesave.util.DimensionIds.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.region.ProtectedRegionCodec;
+import com.carpet.safesave.safesave.region.ProtectedRegionManager;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
@@ -99,18 +100,29 @@ public final class SafeSaveFiles {
     }
 
     /**
-     * 写入每个维度的旁置元数据文件（{@code Level.subTickCount} + 调试字段）。
+     * 写入每个维度的旁置元数据文件，并在写入前记录当时完整加载的 ProtectedRegion。
      *
      * <p>挂在 {@code MinecraftServer.saveAllChunks} 的 HEAD 而非 RETURN：当 {@code flush=true} 时，
      * 原版会在保存期间运行 {@code processUnloads} 并触发区块 NBT 写入，因此这里只写世界级元数据；
      * 区块数据由 {@code SerializableChunkDataMixin} 在随后的每个区块保存中写入。
+     *
+     * <p>首刻之前（{@code session.freezeArmed} 仍为 true）的保存——如
+     * {@code IntegratedServer.initServer} / {@code DedicatedServer.initServer} 里的
+     * {@code saveEverything(false, true, true)}——直接跳过：世界尚未开始 tick，旁置元数据没有
+     * 新内容，且 Region 可能尚未从文件恢复，写盘只会清空 regions 或把启动目标重算为 false。
+     * 服务器关闭流程（{@code server.isStopped()} 为 true）中则跳过 {@code requiredAtStartup}
+     * 重算：关闭时原版先排干卸载全部区块，此刻"完整加载"判据必然失败，重算会把上次正常保存
+     * 捕获的启动目标全部抹掉；关闭应保留上次正常保存时的标记。
      */
     public static void saveAll(final MinecraftServer server, final SafeSaveSession session) {
-        if (session == null || session.store == null) {
+        if (session == null || session.store == null || session.freezeArmed) {
             return;
         }
+        session.store.setServerTickCount(server.getTickCount()); // 仅调试用
+        int startupRegionTargets = 0;
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
+            startupRegionTargets += ProtectedRegionManager.captureSaveState(level, state, !server.isStopped());
             SafeSaveStore.DimensionData data = session.store.dimension(dimensionId(level));
             data.subTickCount = level.subTickCount;
             data.gameTime = level.getGameTime(); // 仅调试用
@@ -121,15 +133,15 @@ public final class SafeSaveFiles {
             Path file = dimensionDataDir(level).resolve(FILE_NAME);
             write(file, session.store.saveDimension(dimensionId(level), data));
         }
-        session.store.setServerTickCount(server.getTickCount()); // 仅调试用
 
         int pending = 0;
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
             pending += state.pendingChunks.size();
         }
-        DebugLog.info("saved safesave world metadata over {} dimension(s); {} chunk(s) still pending rebuild",
-                server.levelKeys().size(), pending);
+        DebugLog.info("saved safesave world metadata over {} dimension(s); {} chunk(s) still pending rebuild; "
+                        + "{} fully loaded region(s) recorded for next startup",
+                server.levelKeys().size(), pending, startupRegionTargets);
     }
 
     /** 原子写入：先写临时文件再移动，崩溃不会留下半截文件。 */

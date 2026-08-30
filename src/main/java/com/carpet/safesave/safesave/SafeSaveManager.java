@@ -15,9 +15,12 @@ import com.carpet.safesave.safesave.region.ProtectedRegionManager;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.chunk.ChunkAccess;
 
 import java.util.Set;
@@ -103,7 +106,8 @@ public final class SafeSaveManager {
 
     /**
      * 在 Carpet 的 {@code onServerLoaded}（{@code MinecraftServer.loadLevel} 的 HEAD，早于
-     * {@code createLevels}/{@code prepareLevels}）处调用：绑定会话并读取旁置元数据；冻结在首刻前由 {@link #onFirstServerTick} 执行。
+     * {@code createLevels}/{@code prepareLevels}）处调用：绑定会话并读取旁置元数据；冻结与自动解冻
+     * 由 {@link #onFirstServerTick} 在服务端刻开头处理。
      */
     public static void onServerLoaded(final MinecraftServer server) {
         if (!shouldRun()) {
@@ -137,35 +141,138 @@ public final class SafeSaveManager {
                 if (data.regions != null && !data.regions.isEmpty()) {
                     SafeSaveLevelAccess.of(level).protectedRegions.byName.putAll(
                             ProtectedRegionCodec.load(data.regions));
-                    SafeSaveLevelAccess.of(level).protectedRegions.reindex();
                 }
             }
         }
     }
 
     /**
-     * 在 {@code MinecraftServer.tickServer} 的 HEAD 处调用（该方法每个服务端刻都会运行）：
-     * 用 {@code freezeArmed} 保证只在首刻前冻结一次，不会在用户 {@code /tick unfreeze} 后重新冻结。
+     * 在 {@code MinecraftServer.tickServer} 的 HEAD 处调用。首刻按配置决定是否全局冻结；region
+     * 模式随后每个服务器刻检查上次保存时选中的 Region，全部加载或超时后自动解冻。
      */
     public static void onFirstServerTick(final MinecraftServer server) {
         SafeSaveSession session = SafeSaveSession.current();
-        if (session == null || !session.freezeArmed) {
+        if (session == null) {
             return;
         }
-        session.freezeArmed = false;
+        if (session.freezeArmed) {
+            session.freezeArmed = false;
+            armStartupFreeze(server, session);
+        }
+        updateStartupRegionBarrier(server, session);
+    }
+
+    private static void armStartupFreeze(final MinecraftServer server, final SafeSaveSession session) {
+        String mode = SafeSaveRules.safeSaveUnfreeze;
+        if ("region".equals(mode)) {
+            if (!SafeSaveRules.safeSaveRegions) {
+                DebugLog.info("safeSave unfreeze mode = region, but safeSaveRegions is off; "
+                        + "the server will not be frozen on startup.");
+                return;
+            }
+            ProtectedRegionManager.StartupStatus status = ProtectedRegionManager.startupStatus(server);
+            if (status.required() == 0) {
+                DebugLog.info("safeSave unfreeze mode = region; no fully loaded region was recorded at the last save, "
+                        + "so startup will not be frozen.");
+                return;
+            }
+            server.tickRateManager().setFrozen(true);
+            session.startupRegionBarrierActive = true;
+            session.startupRegionBarrierStartedAt = server.getTickCount();
+            session.startupRegionBarrierLastLogAt = 0;
+            DebugLog.info("froze the server at serverTick={}, gameTime={}; waiting for {} region(s) recorded at "
+                            + "the last save ({} already loaded, missing={}), timeout={} server tick(s)",
+                    server.getTickCount(), server.overworld().getGameTime(),
+                    status.required(), status.loaded(), status.missingDescription(),
+                    Math.max(SafeSaveRules.safeSaveRegionTimeout, 0));
+            broadcastStartupFrozen(server, session);
+            return;
+        }
         if (!enabled()) {
             return;
         }
-        String mode = SafeSaveRules.safeSaveUnfreeze;
         if ("manual".equals(mode)) {
             server.tickRateManager().setFrozen(true);
             DebugLog.info("froze the server before its first tick. "
                     + "Run '/tick unfreeze' once you are happy with the restored state.");
         } else if ("no_freeze".equals(mode)) {
             DebugLog.info("safeSave unfreeze mode = no_freeze; the server will not be frozen on startup.");
-        } else {
-            // "region" 模式后续实现：冻结到所有 ProtectedRegion 完整为止再自动解冻。
-            DebugLog.info("safeSave unfreeze mode = region (not implemented yet); behaving like no_freeze.");
+        }
+    }
+
+    private static void updateStartupRegionBarrier(final MinecraftServer server,
+                                                   final SafeSaveSession session) {
+        if (!session.startupRegionBarrierActive) {
+            return;
+        }
+        if (!server.tickRateManager().isFrozen()) {
+            session.startupRegionBarrierActive = false;
+            DebugLog.warn("startup region wait was cancelled because the server was manually unfrozen");
+            broadcast(server, Component.translatable("safesave.message.startup_unfrozen.manual")
+                    .withStyle(ChatFormatting.GREEN));
+            return;
+        }
+        int elapsed = Math.max(server.getTickCount() - session.startupRegionBarrierStartedAt, 0);
+        ProtectedRegionManager.StartupStatus status = ProtectedRegionManager.startupStatus(server);
+        if (status.complete()) {
+            session.startupRegionBarrierActive = false;
+            server.tickRateManager().setFrozen(false);
+            DebugLog.info("all {} startup region(s) are fully loaded; automatically unfroze at serverTick={}, "
+                            + "gameTime={} after {} tick(s)",
+                    status.required(), server.getTickCount(), server.overworld().getGameTime(), elapsed);
+            broadcast(server, Component.translatable("safesave.message.startup_unfrozen.complete")
+                    .withStyle(ChatFormatting.GREEN));
+            return;
+        }
+        int timeout = Math.max(SafeSaveRules.safeSaveRegionTimeout, 0);
+        if (elapsed >= timeout) {
+            session.startupRegionBarrierActive = false;
+            server.tickRateManager().setFrozen(false);
+            DebugLog.warn("startup region wait timed out at serverTick={}, gameTime={} after {} tick(s); "
+                            + "automatically unfroze with {}/{} region(s) loaded, missing={}",
+                    server.getTickCount(), server.overworld().getGameTime(), elapsed,
+                    status.loaded(), status.required(),
+                    status.missingDescription());
+            broadcast(server, Component.translatable("safesave.message.startup_unfrozen.timeout",
+                            status.loaded(), status.required())
+                    .withStyle(ChatFormatting.YELLOW));
+            return;
+        }
+        if (elapsed - session.startupRegionBarrierLastLogAt >= 20) {
+            session.startupRegionBarrierLastLogAt = elapsed;
+            DebugLog.info("startup region wait: {}/{} loaded after {} server tick(s), missing={}",
+                    status.loaded(), status.required(), elapsed, status.missingDescription());
+        }
+    }
+
+    /** 玩家进入时，若仍由 SafeSave 启动屏障冻结，则告知最长剩余等待时间。 */
+    public static void onPlayerJoined(final ServerPlayer player) {
+        SafeSaveSession session = SafeSaveSession.current();
+        MinecraftServer server = player.level().getServer();
+        if (session == null || server == null || !session.startupRegionBarrierActive
+                || !server.tickRateManager().isFrozen()) {
+            return;
+        }
+        player.sendSystemMessage(startupFrozenMessage(server, session));
+    }
+
+    private static void broadcastStartupFrozen(final MinecraftServer server,
+                                               final SafeSaveSession session) {
+        broadcast(server, startupFrozenMessage(server, session));
+    }
+
+    private static Component startupFrozenMessage(final MinecraftServer server,
+                                                  final SafeSaveSession session) {
+        int elapsed = Math.max(server.getTickCount() - session.startupRegionBarrierStartedAt, 0);
+        int remainingTicks = Math.max(Math.max(SafeSaveRules.safeSaveRegionTimeout, 0) - elapsed, 0);
+        int remainingSeconds = (remainingTicks + 19) / 20;
+        return Component.translatable("safesave.message.startup_frozen", remainingTicks, remainingSeconds)
+                .withStyle(ChatFormatting.YELLOW);
+    }
+
+    private static void broadcast(final MinecraftServer server, final Component message) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            player.sendSystemMessage(message);
         }
     }
 
@@ -239,9 +346,6 @@ public final class SafeSaveManager {
             return;
         }
         SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
-        // ProtectedRegion 完整性评估每个世界刻 HEAD 都运行（包括全局冻结期间），
-        // 这样 /tick freeze 期间加载好区块后 region 状态也能跟上。
-        ProtectedRegionManager.tick(level, session, levelState);
         if (enabled()) {
             // 活塞刻顺序重建必须在冻结期间也运行：ServerLevel.tick 本身不受 tickRateManager 门控，
             // 而 PME loadAdditional 发生在区块加载时（可能早于第一个非冻结 tick）。
@@ -254,30 +358,15 @@ public final class SafeSaveManager {
             Set<Long> newChunks = ChunkRebuildCoordinator.rebuildNewChunks(level, session, levelState);
             EntityOrderManager.rebuildChunks(level, newChunks);
         }
-        // 必须放在计划刻恢复之后：冻结区块刚从 NBT 恢复出的刻也要为当前这个本地冻结刻后移，
-        // 随后 ServerLevel.tick 才会推进 gameTime 并尝试执行计划刻。
-        ProtectedRegionManager.pauseFrozenScheduledTicks(level, levelState);
     }
 
     /**
-     * 在 {@code MinecraftServer.saveAllChunks} 的 HEAD 处调用：写世界级旁置元数据。
+     * 写世界级旁置元数据。在 {@code MinecraftServer.saveAllChunks} 的 HEAD 处调用（自动保存、
+     * {@code /save-all}、关闭时的最终保存），也在 Carpet 的 {@code onServerClosed}
+     * （{@code stopServer} 的 HEAD）处调用：关闭后会话刻意保留（不得 clear），因为原版在
+     * onServerClosed 之后还会保存一次，此时区块序列化仍要读取会话里的 store。
      */
     public static void saveAll(final MinecraftServer server) {
-        if (!shouldRun()) {
-            return;
-        }
-        SafeSaveSession session = SafeSaveSession.current();
-        if (session == null || session.store == null) {
-            return;
-        }
-        SafeSaveFiles.saveAll(server, session);
-    }
-
-    /**
-     * 在 {@code MinecraftServer.onServerClosed} 的 HEAD 处调用：写世界级旁置元数据并关闭会话。
-     * 关闭后会话保留（不得 clear），因为原版在 onServerClosed 之后还会保存一次。
-     */
-    public static void onServerClosed(final MinecraftServer server) {
         if (!shouldRun()) {
             return;
         }

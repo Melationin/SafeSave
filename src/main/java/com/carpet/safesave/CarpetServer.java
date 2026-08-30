@@ -7,6 +7,7 @@ import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveManager;
 import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.region.ProtectedRegion;
+import com.carpet.safesave.safesave.region.ProtectedRegionManager;
 import com.carpet.safesave.safesave.region.ProtectedRegionState;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -51,7 +52,9 @@ public class CarpetServer implements CarpetExtension, ModInitializer {
 
     @Override
     public void onServerClosed(MinecraftServer server) {
-        SafeSaveManager.onServerClosed(server);
+        // 在 stopServer 的 HEAD 处触发，与原版 saveAllChunks HEAD 一样写世界级旁置元数据；
+        // 关闭后会话刻意保留（不得 clear），因为原版之后还会保存一次（见 SafeSaveManager.saveAll）。
+        SafeSaveManager.saveAll(server);
     }
 
     @Override
@@ -190,7 +193,7 @@ public class CarpetServer implements CarpetExtension, ModInitializer {
             for (ProtectedRegion region : regions.byName.values()) {
                 sb.append("\n - ").append(region.name)
                         .append(": ").append(region.chunks.size()).append(" chunk(s)")
-                        .append(region.frozen ? " [FROZEN]" : " [active]");
+                        .append(region.requiredAtStartup ? " [startup target]" : "");
             }
             return Component.literal(sb.toString());
         }, false);
@@ -208,9 +211,10 @@ public class CarpetServer implements CarpetExtension, ModInitializer {
             ctx.getSource().sendFailure(Component.literal("Unknown ProtectedRegion '" + name + "'."));
             return 0;
         }
+        boolean loaded = ProtectedRegionManager.isFullyLoaded(ctx.getSource().getLevel(), region);
         ctx.getSource().sendSuccess(() -> Component.literal(
                 "ProtectedRegion '" + name + "': " + region.chunks.size() + " chunk(s), "
-                        + (region.frozen ? "FROZEN (frozenAt=" + region.frozenAt + ")" : "active")
+                        + "fullyLoadedNow=" + loaded + ", startupTarget=" + region.requiredAtStartup
                         + (SafeSaveRules.safeSaveRegions ? "" : " [rule safeSaveRegions is OFF]")), false);
         return 1;
     }

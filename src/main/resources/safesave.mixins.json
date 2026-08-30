@@ -4,6 +4,7 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "MinecraftServerMixin",
+    "PlayerListMixin",
     "ServerLevelMixin",
     "blockentity.PistonMovingBlockEntityMixin",
     "entity.AbstractMinecartMixin",

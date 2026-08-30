@@ -44,6 +44,6 @@ public final class SafeSaveLevelState {
     /** 实体 tick 序号（per-Level：实体的 {@code level()} 始终可用）。 */
     public final OrderSequence entityOrder = new OrderSequence();
 
-    /** ProtectedRegion 定义与冻结状态（per-Level）。 */
+    /** ProtectedRegion 定义与上次保存时的启动目标标记（per-Level）。 */
     public final ProtectedRegionState protectedRegions = new ProtectedRegionState();
 }

@@ -26,9 +26,9 @@ public abstract class MinecraftServerMixin {
         SafeSaveManager.onLevelsCreated((MinecraftServer) (Object) this);
     }
 
-    /** 在第一个服务端刻之前冻结，确保恢复被确认前一切不推进。 */
+    /** 首刻处理启动冻结；region 模式下随后持续检查完整加载目标与超时。 */
     @Inject(method = "tickServer", at = @At("HEAD"))
-    private void SS$beforeFirstServerTick(final BooleanSupplier haveTime, final CallbackInfo ci) {
+    private void SS$onServerTickHead(final BooleanSupplier haveTime, final CallbackInfo ci) {
         SafeSaveManager.onFirstServerTick((MinecraftServer) (Object) this);
     }
 
