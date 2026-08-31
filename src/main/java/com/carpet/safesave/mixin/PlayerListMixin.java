@@ -10,7 +10,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** 玩家完成登录后发送 SafeSave 启动冻结状态。 */
 @Mixin(PlayerList.class)
 public abstract class PlayerListMixin {
 

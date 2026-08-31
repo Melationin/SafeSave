@@ -7,9 +7,6 @@ import net.minecraft.nbt.ListTag;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * ProtectedRegion 定义及“上次保存时完整加载”标记的 NBT 编解码。
- */
 public final class ProtectedRegionCodec {
 
     private static final String KEY_NAME = "name";
@@ -19,7 +16,6 @@ public final class ProtectedRegionCodec {
     private ProtectedRegionCodec() {
     }
 
-    /** @return 空 map 返回空 list */
     public static ListTag save(final Map<String, ProtectedRegion> regions) {
         ListTag list = new ListTag();
         for (ProtectedRegion region : regions.values()) {
@@ -32,7 +28,7 @@ public final class ProtectedRegionCodec {
         return list;
     }
 
-    /** @return 按保存顺序恢复的 name -> region；空列表返回空 map */
+    /*按保存顺序恢复的 name -> region；空列表返回空 map */
     public static Map<String, ProtectedRegion> load(final ListTag list) {
         Map<String, ProtectedRegion> out = new LinkedHashMap<>();
         if (list == null || list.isEmpty()) {

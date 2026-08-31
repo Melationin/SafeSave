@@ -16,9 +16,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 实体 tick 列表的接入：序号分配（进入列表时）、活跃表快照/整体重建。
- */
 @Mixin(EntityTickList.class)
 public abstract class EntityTickListMixin implements EntityTickListAccess {
 
@@ -40,9 +37,9 @@ public abstract class EntityTickListMixin implements EntityTickListAccess {
     }
 
     /**
-     * {@code add} 是所有实体进入 tick 列表的唯一入口：
-     * 新生成的实体在此分配序号；从 NBT 加载的有序号实体不需要额外记录，
-     * 其所在区块会在非冻结 tick 开头由 {@code ChunkRebuildCoordinator.rebuildNewChunks} 统一识别并重排。
+     * {@code add} 是所有实体进入 tick 列表的唯一入口：新生成的实体在此分配序号；
+     * NBT 加载的实体无需记录，其区块会在非冻结 tick 开头由
+     * {@code ChunkRebuildCoordinator.rebuildNewChunks} 统一识别并重排。
      */
     @Inject(method = "add", at = @At("HEAD"))
     private void SS$onEntityAdded(final Entity entity, final CallbackInfo ci) {

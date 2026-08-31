@@ -4,10 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 一个 {@code ServerLevel} 内的 ProtectedRegion 维度级状态。
- *
- * <p>挂在 {@code SafeSaveLevelState} 上，随 ServerLevel 创建/丢弃天然隔离。
- * Region 只用于保存时完整性记录与下次启动的全局冻结屏障，不再维护区块级冻结索引。
+ * 一个 {@code ServerLevel} 内的 ProtectedRegion 维度级状态：挂在 {@code SafeSaveLevelState} 上，
+ * 随 ServerLevel 创建/丢弃天然隔离。
  */
 public final class ProtectedRegionState {
 

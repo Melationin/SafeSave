@@ -1,7 +1,8 @@
 package com.carpet.safesave.safesave.chunk;
 
-import static com.carpet.safesave.util.DimensionIds.dimensionId;
+
 import static com.carpet.safesave.util.SafeSaveNbt.KEY_SAFE_SAVE;
+import static com.carpet.safesave.util.Util.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
@@ -22,23 +23,11 @@ import net.minecraft.world.ticks.TickContainerAccess;
 
 import java.util.List;
 
-/**
- * 区块 NBT 的 safe-save 子节点读写与 load→rebuild 窗口保护。
- *
- * <p>{@code SerializableChunkData.parse} 是唯一能看到原始区块 NBT 的加载点（且第一个参数就是
- * {@code ServerLevel}，因此维度已知）；{@code copyOf}/{@code write} 是保存时唯一能拿到世界与
- * 最终 NBT 的点。本类只做“暂存/注入”，tag 在 record 实例上的交接由
- * {@code SerializableChunkDataMixin} 完成。
- */
 public final class ChunkNbtBridge {
 
     private ChunkNbtBridge() {
     }
 
-    /**
-     * 在 {@code SerializableChunkData.parse} 的 HEAD 处调用：读取区块 NBT 中的
-     * {@code safeSave} 子节点，登记为待恢复快照。
-     */
     public static void onChunkTagRead(final ServerLevel level, final CompoundTag chunkData,
                                       final SafeSaveSession session, final SafeSaveLevelState levelState) {
         if (session.store == null) {
@@ -70,15 +59,6 @@ public final class ChunkNbtBridge {
                 snapshot.blockTicks().size(), snapshot.fluidTicks().size(), snapshot.blockEvents().size());
     }
 
-    /**
-     * 在 {@code SerializableChunkData.copyOf} 的 RETURN 处调用：为即将序列化的区块计算
-     * safe-save 子节点。
-     *
-     * <p>load→rebuild 窗口保护：若该区块仍有待恢复快照（还没在非冻结 tick 开头重建），
-     * 则把待恢复快照写回区块 NBT，而不是 vanilla 重新锚定后的临时容器内容。
-     *
-     * @return 需要挂到区块 NBT 的 safe-save 子节点；为空时返回 {@code null}
-     */
     public static CompoundTag onChunkSerializing(final ServerLevel level, final ChunkAccess chunk,
                                                  final SafeSaveSession session,
                                                  final SafeSaveLevelState levelState) {
@@ -90,7 +70,7 @@ public final class ChunkNbtBridge {
         }
         long key = chunk.getPos().pack();
 
-        // 窗口保护：待恢复快照只有在 rebuildNewChunks 消费后才会移除。这里只读取（peek），
+        // 待恢复快照只有在 rebuildNewChunks 消费后才会移除。这里只读取（peek），
         // 这样在 load→rebuild 窗口内被保存多少次，写回磁盘的都是原始绝对快照。
         SafeSaveStore.ChunkSnapshot snapshot = levelState.pendingChunks.get(key);
         if (snapshot == null) {

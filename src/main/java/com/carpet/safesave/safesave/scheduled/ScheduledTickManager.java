@@ -1,6 +1,5 @@
 package com.carpet.safesave.safesave.scheduled;
 
-import static com.carpet.safesave.util.DimensionIds.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
@@ -21,31 +20,29 @@ import net.minecraft.world.ticks.TickPriority;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.carpet.safesave.util.Util.dimensionId;
+
 /**
- * 计划刻（scheduled tick）的保存与恢复管理（纯服务，无静态可变状态）。
+ * 计划刻的保存与恢复管理。
  *
- * <p>原版将刻以 {@code SavedTick(type, pos, int delay, priority)} 存在区块 NBT 中，加载时按区块
- * 重新锚定 {@code delay} 并丢弃全局 {@code subTickOrder}，导致绝对触发时间漂移、跨区块顺序被摧毁。
- * 本类用<em>绝对</em> {@code triggerTick} 与原始全局 {@code subTickOrder} 快照/恢复每个区块的刻。
- *
- * <p>会话级计数（restored/dropped）在 {@link SafeSaveSession}；维度级警告位在
- * {@link SafeSaveLevelState}。
+ * <p>原版把刻以 {@code SavedTick(type, pos, delay, priority)} 存进区块 NBT，加载时按区块
+ * 重新锚定 {@code delay} 并丢弃全局 {@code subTickOrder}，导致绝对触发时间漂移、跨区块顺序
+ * 被摧毁。本类改用<em>绝对</em> {@code triggerTick} 与原始全局 {@code subTickOrder} 快照/恢复。
  */
 public final class ScheduledTickManager {
 
     private ScheduledTickManager() {
     }
 
-    /**
-     * 在 {@code MinecraftServer.prepareLevels} 的 HEAD 处调用（世界与存储同时可用的最早时机）：
-     * 恢复 {@code Level.subTickCount}。在任何区块解包之前恢复计数器，可以保证新调度的刻不会与
-     * 恢复的 {@code subTickOrder} 值冲突。
+    /*
+     * 在 MinecraftServer.prepareLevels的 HEAD 调用（世界与存储同时可用的最早时机）：
+     * 必须在任何区块解包之前恢复计数器，否则新调度的刻会与恢复的 subTickOrder 冲突。
      */
     public static void restoreSubTickCount(final ServerLevel level, final SafeSaveStore.DimensionData data) {
         if (data.subTickCount >= 0L) {
 
             long current = level.subTickCount;
-            // 绝不让计数器倒退：已经发出的值必须保持唯一
+            // 绝不让计数器倒退：已发出的值必须保持唯一
             if (data.subTickCount > current) {
                 level.subTickCount = data.subTickCount;
                 DebugLog.info("{}: restored Level.subTickCount {} -> {}",
@@ -54,15 +51,12 @@ public final class ScheduledTickManager {
         }
     }
 
-    /**
-     * 恢复单个区块的<em>计划刻</em>（不处理方块事件；方块事件由协调层统一恢复）。
+    /*
+     * 恢复单个区块的计划刻（方块事件由协调层统一恢复）。
      *
-     * <p>绝对触发时刻与卸载期间继续走的世界时间之间的漂移在这里修正：对已过期
-     * （{@code triggerTick < currentGameTime}）的计划刻，按保存时的剩余间隔
-     * （{@code triggerTick - snapshotGameTime}）从当前世界时间重新计时；未过期的保持绝对时刻，
-     * 保证重启零漂移。{@code snapshotGameTime == Long.MIN_VALUE} 时跳过顺延（旧区块数据）。
-     *
-     * @param snapshot 该区块待恢复的 safe-save 快照（已由协调层从待恢复映射中取出）
+     * 顺延规则：对已过期（code triggerTick < currentGameTime）的刻，按保存时剩余间隔
+     * （triggerTick - snapshotGameTime）从当前世界时间重新计时；未过期的保持绝对时刻。
+     *  snapshotGameTime == Long.MIN_VALUE 时跳过顺延（旧区块数据）。
      */
     @SuppressWarnings("unchecked")
     public static void restoreChunkTicks(final ServerLevel level,
@@ -87,12 +81,7 @@ public final class ScheduledTickManager {
                 snapshot.snapshotGameTime(), keptBlock + keptFluid);
     }
 
-    /**
-     * 纯诊断用途。旁置文件里的 {@code gameTime} <strong>从不</strong>用于重新锚定任何东西——
-     * 重锚定由每个区块快照自带的 {@code snapshotGameTime} 完成。如果这里的值与实时
-     * {@code gameTime} 不一致，说明旁置文件与 {@code level.dat} 脱节（典型情况：某个会话
-     * 关闭了规则，世界继续推进而此文件没有），这有助于解释为什么恢复的刻被大量顺延。
-     */
+
     private static void warnIfStale(final ServerLevel level, final SafeSaveSession session,
                                     final SafeSaveLevelState levelState) {
         String dimension = dimensionId(level);
@@ -110,12 +99,7 @@ public final class ScheduledTickManager {
         }
     }
 
-    /**
-     * @param snapshotGameTime 保存快照时的世界时间；{@code Long.MIN_VALUE} = 缺失，保持绝对触发时刻
-     * @param currentGameTime 当前世界时间，用于对已过期刻做原版式顺延重锚定
-     * @param keep 清空后需要重新加入的既有刻；可为 {@code null}
-     * @return 重新加入的既有刻数量
-     */
+
     @SuppressWarnings("unchecked")
     private static <T> int applyTicks(final TickContainerAccess<T> container,
                                       final List<SafeTick> saved,
@@ -139,7 +123,8 @@ public final class ScheduledTickManager {
             long trigger = entry.triggerTick();
             if (snapshotGameTime != Long.MIN_VALUE) {
                 long remaining = trigger - snapshotGameTime;
-                trigger = Math.max(trigger, currentGameTime + Math.max(remaining, 0L));
+                trigger = currentGameTime + remaining;
+               // trigger = Math.max(trigger, currentGameTime + Math.max(remaining, 0L));
             }
             ticks.add(new ScheduledTick<>(
                     type,
@@ -164,7 +149,6 @@ public final class ScheduledTickManager {
         return kept;
     }
 
-    /** 单个区块的计划刻快照：方块刻与流体刻分开保存。 */
     public record ChunkTickSnapshot(List<SafeTick> blockTicks, List<SafeTick> fluidTicks) {
         public ChunkTickSnapshot {
             blockTicks = List.copyOf(blockTicks);
@@ -176,14 +160,6 @@ public final class ScheduledTickManager {
         }
     }
 
-    /**
-     * 捕获单个区块的计划刻（方块刻与流体刻分开）。
-     *
-     * <p>协调层负责把返回结果与方块事件快照合并成 {@link SafeSaveStore.ChunkSnapshot}，
-     * 供区块 NBT 保存路径写入。
-     *
-     * @return 该区块当前已解包容器的绝对刻；容器未就绪或不可读时为 {@code null}
-     */
     public static ChunkTickSnapshot snapshotChunkTicks(final ServerLevel level,
                                                        final long packedChunkPos,
                                                        final TickContainerAccess<Block> blockTicks,
@@ -191,13 +167,10 @@ public final class ScheduledTickManager {
         SafeTickContainer blockContainer = (SafeTickContainer) blockTicks;
         SafeTickContainer fluidContainer = (SafeTickContainer) fluidTicks;
 
-        // 仍持有 pendingTicks 的容器从未被解包，因此没有可捕获的绝对时间。
         if (blockContainer.SS$hasPendingTicks() || fluidContainer.SS$hasPendingTicks()) {
             return null;
         }
 
-        // 容器不可读（如与第三方刻调度重写冲突）时返回 null：跳过该区块，保留存储中的旧条目，
-        // 而不是以空快照覆盖——那会悄悄删除已保存的刻。
         List<?> blockQueue = blockContainer.SS$snapshotQueue();
         List<?> fluidQueue = fluidContainer.SS$snapshotQueue();
         if (blockQueue == null || fluidQueue == null) {
@@ -221,7 +194,7 @@ public final class ScheduledTickManager {
                     tick.priority().getValue(),
                     tick.subTickOrder()));
         }
-        // 按取出顺序排序，纯粹为了让文件便于检查；恢复使用存储的字段。
+        // 排序仅为便于检查文件；恢复使用存储的字段。
         out.sort((a, b) -> {
             int cmp = Long.compare(a.triggerTick(), b.triggerTick());
             if (cmp != 0) {

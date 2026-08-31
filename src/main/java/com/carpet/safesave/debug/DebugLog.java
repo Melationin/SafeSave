@@ -7,8 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * <p>这里每个公开方法都会重新检查自己的通道，因此调用方可以无条件调用；但仍然建议在调用处使用
- * {@code DebugSwitches.DEBUG &&} 守卫，因为它能让 javac 在发布构建中完全剥离该调用。
+ * 每个公开方法都会自查自己的通道，调用方可以无条件调用；仍建议在调用处加
+ * {@code DebugSwitches.DEBUG &&} 守卫，让 javac 在发布构建中完全剥离该调用。
  */
 public final class DebugLog {
     private static final Logger LOG = LoggerFactory.getLogger("safesave");
@@ -18,7 +18,6 @@ public final class DebugLog {
 
     // ---------------------------------------------------------------- 辅助方法
 
-    /** 计划刻载荷（{@link Block} 或 {@link Fluid}）的注册表 id。 */
     public static String typeId(final Object type) {
         if (type instanceof Block block) {
             return BuiltInRegistries.BLOCK.getKey(block).toString();
@@ -32,7 +31,6 @@ public final class DebugLog {
 
     // ------------------------------------------------------------ 通用信息
 
-    /** safe-save 功能常开的信息输出（不受通道门控）。 */
     public static void info(final String format, final Object... args) {
         LOG.info("[safe-save] " + format, args);
     }

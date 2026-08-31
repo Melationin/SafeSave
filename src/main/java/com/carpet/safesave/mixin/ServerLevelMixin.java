@@ -20,19 +20,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.function.BooleanSupplier;
 
 /**
- * 世界刻调试输出、方块事件调试输出，以及 safe-save 的新加载区块统一重建。
- *
- * <p>同时通过 {@code @Unique} 字段实现 {@link SafeSaveLevelAccess}：safe-save 的维度级状态
- * 直接挂在 {@code ServerLevel} 实例上，随世界创建/丢弃天然隔离。
+ * 维度级状态直接挂在 {@code ServerLevel} 实例上，随世界创建/丢弃天然隔离。
  */
 @Mixin(ServerLevel.class)
 public abstract class ServerLevelMixin implements ServerLevelTickListAccess, SafeSaveLevelAccess {
 
-    /** safe-save 维度级状态；构造期初始化，parse 线程经 {@link SafeSaveLevelAccess} 读取。 */
+    /** parse 线程经 {@link SafeSaveLevelAccess} 读取。 */
     @Unique
     private final SafeSaveLevelState SS$safeSaveLevelState = new SafeSaveLevelState();
 
-    /** 暴露 private 的 {@code entityTickList} 字段供实体顺序管理访问。 */
     @Accessor("entityTickList")
     @Override
     public abstract EntityTickList SS$getEntityTickList();
@@ -42,10 +38,6 @@ public abstract class ServerLevelMixin implements ServerLevelTickListAccess, Saf
         return this.SS$safeSaveLevelState;
     }
 
-    /**
-     * {@code ServerLevel.tick} 的 HEAD：输出请求的“打印世界刻”通道，外加每维度每非冻结 tick
-     * 的计划刻/方块事件新加载区块统一重建。
-     */
     @Inject(method = "tick", at = @At("HEAD"))
     private void SS$onWorldTickHead(final BooleanSupplier haveTime, final CallbackInfo ci) {
         ServerLevel self = (ServerLevel) (Object) this;
@@ -53,7 +45,7 @@ public abstract class ServerLevelMixin implements ServerLevelTickListAccess, Saf
     }
 
     /**
-     * {@code ServerLevel.blockEvent} 的 TAIL：为每个成功加入队列的事件分配全局顺序号，
+     * {@code ServerLevel.blockEvent} 的 TAIL：仅对成功入队的事件分配全局顺序号，
      * 供按区块保存方块事件后重建世界级执行顺序。
      */
     @Inject(method = "blockEvent", at = @At("TAIL"))

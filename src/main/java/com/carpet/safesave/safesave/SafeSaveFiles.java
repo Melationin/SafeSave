@@ -1,6 +1,5 @@
 package com.carpet.safesave.safesave;
 
-import static com.carpet.safesave.util.DimensionIds.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.region.ProtectedRegionCodec;
@@ -19,13 +18,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.stream.Stream;
 
-/**
- * safe-save 世界级元数据（sidecar）文件读写。
- *
- * <p>每个维度一个旁置元数据文件：{@code <维度目录>/data/safesave.dat}。内容只包含
- * {@code Level.subTickCount} 与调试字段；计划刻 / 方块事件 / 活塞 / 实体序号都随区块 NBT
- * 或方块实体 / 实体 NBT 保存。
- */
+import static com.carpet.safesave.util.Util.dimensionId;
+
 public final class SafeSaveFiles {
 
     public static final String FILE_NAME = "safesave.dat";
@@ -33,20 +27,14 @@ public final class SafeSaveFiles {
     private SafeSaveFiles() {
     }
 
-    /** 维度目录的 data/ 子目录（如 <world>/dimensions/minecraft/overworld/data）。 */
     public static Path dimensionDataDir(final ServerLevel level) {
         Path root = level.getServer().getWorldPath(LevelResource.ROOT);
         return DimensionType.getStorageFolder(level.dimension(), root).resolve("data");
     }
 
-    /**
-     * 扫描并读取所有维度的旁置元数据文件，合并进会话存储。
-     */
     public static void loadAll(final MinecraftServer server, final SafeSaveSession session) {
         Path root = server.getWorldPath(LevelResource.ROOT);
 
-        // 每个维度一个旁置元数据文件，位于 <维度目录>/data/safesave.dat。
-        // 维度目录结构：<world>/dimensions/<namespace>/<path>/，扫描两层。
         Path dimensionsDir = root.resolve("dimensions");
         int loadedFiles = 0;
         if (Files.isDirectory(dimensionsDir)) {
@@ -74,11 +62,6 @@ public final class SafeSaveFiles {
         }
     }
 
-    /**
-     * 读取一个维度旁置元数据文件并合并进 {@code session.store}。
-     *
-     * @return {@code true} 当文件读取成功且包含维度数据
-     */
     private static boolean loadFile(final Path file, final SafeSaveSession session) {
         try {
             CompoundTag tag = NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap());
@@ -87,7 +70,7 @@ public final class SafeSaveFiles {
                 DebugLog.warn("{} contains no dimension data - skipped", file.getFileName());
                 return false;
             }
-            // 文件内 dimension 字段即维度 id；debug 字段取第一个加载到的即可
+            // serverTickCount 仅调试用，取第一个加载到的即可
             if (session.store.serverTickCount() < 0) {
                 session.store.setServerTickCount(loaded.serverTickCount());
             }
@@ -100,8 +83,6 @@ public final class SafeSaveFiles {
     }
 
     /**
-     * 写入每个维度的旁置元数据文件，并在写入前记录当时完整加载的 ProtectedRegion。
-     *
      * <p>挂在 {@code MinecraftServer.saveAllChunks} 的 HEAD 而非 RETURN：当 {@code flush=true} 时，
      * 原版会在保存期间运行 {@code processUnloads} 并触发区块 NBT 写入，因此这里只写世界级元数据；
      * 区块数据由 {@code SerializableChunkDataMixin} 在随后的每个区块保存中写入。
@@ -144,7 +125,7 @@ public final class SafeSaveFiles {
                 server.levelKeys().size(), pending, startupRegionTargets);
     }
 
-    /** 原子写入：先写临时文件再移动，崩溃不会留下半截文件。 */
+
     private static void write(final Path file, final CompoundTag tag) {
         Path tmp = file.resolveSibling(FILE_NAME + ".tmp");
         try {

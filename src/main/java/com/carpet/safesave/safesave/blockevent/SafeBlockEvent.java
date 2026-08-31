@@ -5,26 +5,13 @@ import net.minecraft.nbt.CompoundTag;
 /**
  * 一条已排队的方块事件，为无损恢复而捕获。
  *
- * <p>原版将这些保存在 {@code ServerLevel.blockEvents} 中，并且<strong>根本不持久化</strong>——
- * 重启会悄然丢弃所有进行中的方块事件（一个已排队 {@code TRIGGER_EXTEND} 但尚未执行的活塞会直接忘掉）。
+ * <p>原版把事件保存在 {@code ServerLevel.blockEvents} 中且<strong>根本不持久化</strong>——
+ * 重启会悄然丢弃所有进行中的方块事件（如已排队但未执行的活塞 {@code TRIGGER_EXTEND}）。
+ * 该容器是有序集合：按插入顺序执行、相同 {@code (pos, block, paramA, paramB)} 不重复。
  *
- * <p>恢复时必须尊重原版容器的两个特性：
- * <ul>
- *   <li>它是 {@code ObjectLinkedOpenHashSet}，因此是<em>有序</em>的——
- *       {@code runBlockEvents} 用 {@code removeFirst()} 按插入顺序取出；</li>
- *   <li>它是<em>集合</em>，因此相同的 {@code (pos, block, paramA, paramB)} 不能出现两次。</li>
- * </ul>
- * 存储有序的 NBT 列表并按序重新加入即可精确复现这两点。
- *
- * <p>每条事件带全局 {@code order}，用于把按区块保存的事件重新合并成世界级执行顺序。
- *
- * @param blockId {@code BlockEventData.block()} 的注册表 id
- * @param x       {@code BlockEventData.pos().getX()}
- * @param y       {@code BlockEventData.pos().getY()}
- * @param z       {@code BlockEventData.pos().getZ()}
- * @param paramA  {@code BlockEventData.paramA()}——对活塞：0 伸出，1 收回，2 掉落
- * @param paramB  {@code BlockEventData.paramB()}——对活塞：{@code Direction.get3DDataValue()}
- * @param order   全局递增序号
+ * @param paramA {@code BlockEventData.paramA()}——对活塞：0 伸出，1 收回，2 掉落
+ * @param paramB {@code BlockEventData.paramB()}——对活塞：{@code Direction.get3DDataValue()}
+ * @param order  全局递增序号
  */
 public record SafeBlockEvent(String blockId, int x, int y, int z, int paramA, int paramB, long order) {
 

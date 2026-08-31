@@ -10,7 +10,7 @@
   "carpet.rule.safeSaveUnfreeze.desc": "启动冻结策略：no_freeze（不冻结）、manual（手动解冻）、region（等待保存时完整加载的 ProtectedRegion 后自动解冻）。",
   "carpet.rule.safeSaveRegionTimeout.name": "保护区启动等待超时",
   "carpet.rule.safeSaveRegionTimeout.desc": "region 解冻模式等待 ProtectedRegion 完整加载的最大服务器刻数；0 表示立即超时放行。",
-  "safesave.message.startup_frozen": "[SafeSave] 正在等待保存时完整加载的区域恢复，游戏刻暂时冻结。最多再等待 %s 个服务器刻（约 %s 秒）便会自动解冻。",
+  "safesave.message.startup_frozen": "[SafeSave] 正在等待受保护区域完整加载，游戏刻暂时冻结。%s 个服务器刻（约 %s 秒）后将会自动解冻。",
   "safesave.message.startup_unfrozen.complete": "[SafeSave] 所需区域已完整加载，游戏已自动解冻。",
   "safesave.message.startup_unfrozen.timeout": "[SafeSave] 区域加载等待已超时，游戏已自动解冻（已加载 %s/%s 个区域）。",
   "safesave.message.startup_unfrozen.manual": "[SafeSave] 启动区域等待已被手动取消，游戏已解冻。"

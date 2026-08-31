@@ -1,6 +1,5 @@
 package com.carpet.safesave.safesave.blockevent;
 
-import static com.carpet.safesave.util.DimensionIds.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
@@ -22,22 +21,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 方块事件（block event）的按区块保存与恢复管理（纯服务，无静态可变状态）。
- *
- * <p>方块事件随 {@link com.carpet.safesave.safesave.SafeSaveStore.ChunkSnapshot} 按区块保存。
- * 每条事件带全局 {@code order}，用于把分散在不同区块快照中的事件重新合并成世界级执行顺序。
- *
- * <p>原版的队列是 {@code ServerLevel.blockEvents}（{@code ObjectLinkedOpenHashSet}），
- * {@code runBlockEvents} 用 {@code removeFirst()} 按插入顺序取出，因此插入顺序<em>即</em>执行顺序。
- * 本类在 {@code ServerLevel.blockEvent} 插入时分配单调递增的全局序号，并在保存时按当前队列
- * 分组到各区块；恢复时把同一 tick 内所有被重建区块的事件按全局序号排序后统一重新入队。
- *
- * <p>维度级序号表与计数器在 {@link SafeSaveLevelState}；会话级诊断计数在 {@link SafeSaveSession}。
- */
+import static com.carpet.safesave.util.Util.dimensionId;
+
+
 public final class BlockEventManager {
 
-    /** 按 {@code order} 升序比较保存的方块事件。 */
     public static final Comparator<SafeBlockEvent> COMPARE_BY_ORDER =
             Comparator.comparingLong(SafeBlockEvent::order);
 
@@ -46,12 +34,9 @@ public final class BlockEventManager {
 
     // ------------------------------------------------------------ 运行时序号
 
-    /**
-     * 在 {@code ServerLevel.blockEvent} TAIL 调用。若事件是首次加入队列则分配全局序号；
-     * 重复事件（集合去重）保持原有序号。
-     *
-     * <p>注意 TAIL 注入在 vanilla {@code add} 之后：重复事件不会被再次插入，但方法仍会执行。
-     * 这里用 {@code levelOrders.containsKey(event)} 识别重复，保持原有序号。
+    /*
+      在  ServerLevel.blockEvent TAIL 调用
+      用 containsKey 识别重复并保持原有序号。
      */
     public static void onBlockEvent(final ServerLevel level, final BlockEventData event) {
         SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
@@ -62,9 +47,8 @@ public final class BlockEventManager {
         levelOrders.put(event, levelState.nextBlockEventOrder++);
     }
 
-    /**
-     * 丢弃已经不在 {@code ServerLevel.blockEvents} 中的序号记录，并为队列中缺少序号的事件
-     * （例如来自其他 mod 直接操作队列）补发序号。每次保存前调用，避免长期运行内存无限增长。
+    /*
+     丢弃已不在队列中的序号记录
      */
     private static void refreshOrders(final ServerLevel level, final SafeSaveLevelState levelState) {
         Map<BlockEventData, Long> old = levelState.blockEventOrders;
@@ -81,17 +65,12 @@ public final class BlockEventManager {
         levelState.nextBlockEventOrder = Math.max(levelState.nextBlockEventOrder, next);
     }
 
-    /** 当前事件队列中的事件总数（调试用）。 */
     public static int liveCount(final Level level) {
         return level instanceof ServerLevel serverLevel ? serverLevel.blockEvents.size() : -1;
     }
 
-    // ------------------------------------------------------------ 快照
 
-    /**
-     * 将当前世界级队列按区块分组，并保留每条事件的全局 {@code order}。
-     * 供区块 NBT 保存路径（{@code ChunkNbtBridge}）按区块取用。
-     */
+
     public static Map<Long, List<SafeBlockEvent>> snapshotByChunk(final ServerLevel level,
                                                                   final SafeSaveLevelState levelState) {
         refreshOrders(level, levelState);
@@ -121,7 +100,6 @@ public final class BlockEventManager {
         return byChunk;
     }
 
-    /** 取单个区块的方块事件快照（用于保存路径）。 */
     public static List<SafeBlockEvent> snapshotChunkEvents(final ServerLevel level,
                                                            final long packedChunkPos,
                                                            final SafeSaveLevelState levelState) {
@@ -130,11 +108,8 @@ public final class BlockEventManager {
 
     // ------------------------------------------------------------ 恢复
 
-    /**
-     * 把一批（可能来自多个区块快照的）方块事件按全局序号排序后重新入队。
-     *
-     * <p>已有的实时事件会被保留在恢复事件之后：恢复的事件来自更早的保存，严格更老。
-     * 队列是集合，因此与恢复事件重复的实时事件不会重复出现。
+    /*
+     把一批方块事件按全局序号排序后重新入队。
      */
     public static void restoreChunkEvents(final ServerLevel level,
                                           final List<SafeBlockEvent> saved,
@@ -186,11 +161,11 @@ public final class BlockEventManager {
             DebugLog.info("{}: restored {} block event(s) in global order ({} pre-existing kept behind them)",
                     dimensionId(level), restored, existing.size());
         } finally {
+            // 回填既有实时事件到恢复事件之后（恢复事件更老，必须排前面）。
             queue.addAll(existing);
         }
     }
 
-    /** 世界刻日志行的调试辅助方法。 */
     public static int pendingCount(final Level level) {
         if (level instanceof ServerLevel serverLevel) {
             return serverLevel.blockEvents.size();
@@ -198,7 +173,6 @@ public final class BlockEventManager {
         return -1;
     }
 
-    /** 当前世界级队列中事件总数（与 {@link #pendingCount} 相同，语义更明确）。 */
     public static int liveEventCount(final Level level) {
         return pendingCount(level);
     }

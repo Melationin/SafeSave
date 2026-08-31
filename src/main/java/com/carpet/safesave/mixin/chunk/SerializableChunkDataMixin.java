@@ -16,16 +16,11 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * 区块 NBT 的 safe-save 读写接线。
- *
- * <p>{@code parse} 是唯一能看到原始区块 NBT 的加载点（且第一个参数就是 {@code ServerLevel}，
- * 因此维度已知）；{@code copyOf}/{@code write} 是保存时唯一能拿到世界与最终 NBT 的点。
- * 本 mixin 只做“暂存/注入”，实际编解码与窗口保护逻辑都在 {@code SafeSaveManager} 与
- * {@code ChunkNbtBridge}。
- *
- * <p>{@code copyOf}（服务器线程）计算好的 safe-save tag 暂存在 record 实例的
- * {@code @Unique} 字段上，{@code write}（后台写线程）从同一实例读回；record 实例经线程池提交，
- * 写读之间有 happens-before。tag 为 {@code null} 表示无 safe-save 数据或未启用。
+ * {@code parse} 是唯一能看到原始区块 NBT 的加载点（首参即 {@code ServerLevel}，维度已知），
+ * {@code copyOf}/{@code write} 是保存侧唯一能拿到世界与最终 NBT 的点。
+ * {@code copyOf}（服务器线程）将 tag 暂存于 record 实例的 {@code @Unique} 字段，
+ * {@code write}（后台写线程）从同一实例读回——实例经线程池提交，写读间有 happens-before；
+ * tag 为 {@code null} 表示无数据或未启用。
  */
 @Mixin(SerializableChunkData.class)
 public abstract class SerializableChunkDataMixin implements SerializableChunkDataAccess {

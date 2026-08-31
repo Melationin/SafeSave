@@ -1,8 +1,9 @@
 package com.carpet.safesave.safesave;
 
-import static com.carpet.safesave.util.DimensionIds.dimensionId;
 import static com.carpet.safesave.util.SafeSaveNbt.KEY_SAFE_SAVE;
+import static com.carpet.safesave.util.Util.dimensionId;
 
+import carpet.patches.EntityPlayerMPFake;
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.rules.SafeSaveRules;
 import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
@@ -25,17 +26,6 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 
 import java.util.Set;
 
-/**
- * SafeSave 门面：规则状态、生命周期入口与外部调用点（mixin）的委托中枢。
- *
- * <p>会话级可变状态（store、freezeArmed、各类计数、活塞序号）在 {@link SafeSaveSession}；
- * 每个 ServerLevel 的维度级状态（knownChunks、pendingChunks、方块事件顺序、实体顺序）在
- * {@link SafeSaveLevelState}，由 {@link com.carpet.safesave.safesave.SafeSaveLevelAccess} 暴露。
- * 本类所有方法保留原签名，内部通过 {@link SafeSaveSession#current()} 解析会话状态。
- *
- * <p>计划刻与方块事件随区块 NBT 的 {@code safeSave} 子节点持久化；世界级
- * {@code Level.subTickCount} 在旁置元数据文件 {@code safesave.dat} 中。
- */
 public final class SafeSaveManager {
 
     public static final String RULE_NAME = "safeSave";
@@ -43,15 +33,10 @@ public final class SafeSaveManager {
     private SafeSaveManager() {
     }
 
-    // -----------------------------------------------------------------------
-    // 规则与状态访问
-    // -----------------------------------------------------------------------
-
     public static boolean enabled() {
         return SafeSaveRules.safeSave;
     }
 
-    /** safeSave 或 ProtectedRegion 任一开启时，会话与旁置文件都需要工作。 */
     public static boolean shouldRun() {
         return SafeSaveRules.safeSave || SafeSaveRules.safeSaveRegions;
     }
@@ -95,7 +80,6 @@ public final class SafeSaveManager {
         return SafeSaveLevelAccess.of(level).pendingChunks.size();
     }
 
-    /** 待恢复区块键集合（仅供调试命令 / 协调层使用）。 */
     public static LongSet pendingChunkKeys(final ServerLevel level) {
         return new LongOpenHashSet(SafeSaveLevelAccess.of(level).pendingChunks.keySet());
     }
@@ -104,26 +88,15 @@ public final class SafeSaveManager {
     // 生命周期：服务器启动
     // -----------------------------------------------------------------------
 
-    /**
-     * 在 Carpet 的 {@code onServerLoaded}（{@code MinecraftServer.loadLevel} 的 HEAD，早于
-     * {@code createLevels}/{@code prepareLevels}）处调用：绑定会话并读取旁置元数据；冻结与自动解冻
-     * 由 {@link #onFirstServerTick} 在服务端刻开头处理。
-     */
+
     public static void onServerLoaded(final MinecraftServer server) {
         if (!shouldRun()) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.begin();
-        // 读取所有维度的旁置元数据文件（Level.subTickCount + 调试字段）。区块级快照在
-        // 区块解析（SerializableChunkData.parse）时逐个登记到各 LevelState.pendingChunks。
         SafeSaveFiles.loadAll(server, session);
-        // 冻结统一在 onFirstServerTick 执行（只冻一次）。这里只绑定会话并读旁置元数据。
     }
 
-    /**
-     * 在 {@code MinecraftServer.prepareLevels} 的 HEAD 处调用：对所有已创建的世界恢复
-     * {@code Level.subTickCount}。此时 {@code createLevels} 已完成，但任何区块尚未准备好刻。
-     */
     public static void onLevelsCreated(final MinecraftServer server) {
         if (!shouldRun()) {
             return;
@@ -146,10 +119,7 @@ public final class SafeSaveManager {
         }
     }
 
-    /**
-     * 在 {@code MinecraftServer.tickServer} 的 HEAD 处调用。首刻按配置决定是否全局冻结；region
-     * 模式随后每个服务器刻检查上次保存时选中的 Region，全部加载或超时后自动解冻。
-     */
+
     public static void onFirstServerTick(final MinecraftServer server) {
         SafeSaveSession session = SafeSaveSession.current();
         if (session == null) {
@@ -178,10 +148,11 @@ public final class SafeSaveManager {
             }
             server.tickRateManager().setFrozen(true);
             session.startupRegionBarrierActive = true;
-            session.startupRegionBarrierStartedAt = server.getTickCount();
+            // 超时自第一个玩家进服起算（startupRegionBarrierStartedAt 保持 -1），见 barrierElapsedTicks。
             session.startupRegionBarrierLastLogAt = 0;
             DebugLog.info("froze the server at serverTick={}, gameTime={}; waiting for {} region(s) recorded at "
-                            + "the last save ({} already loaded, missing={}), timeout={} server tick(s)",
+                            + "the last save ({} already loaded, missing={}), timeout={} server tick(s) "
+                            + "counted from the first player join",
                     server.getTickCount(), server.overworld().getGameTime(),
                     status.required(), status.loaded(), status.missingDescription(),
                     Math.max(SafeSaveRules.safeSaveRegionTimeout, 0));
@@ -200,6 +171,17 @@ public final class SafeSaveManager {
         }
     }
 
+    private static int barrierElapsedTicks(final MinecraftServer server, final SafeSaveSession session) {
+        if (session.startupRegionBarrierStartedAt < 0) {
+            if (server.getPlayerList().getPlayers().isEmpty()) {
+                return 0;
+            }
+            session.startupRegionBarrierStartedAt = server.getTickCount();
+            session.startupRegionBarrierLastLogAt = 0;
+        }
+        return Math.max(server.getTickCount() - session.startupRegionBarrierStartedAt, 0);
+    }
+
     private static void updateStartupRegionBarrier(final MinecraftServer server,
                                                    final SafeSaveSession session) {
         if (!session.startupRegionBarrierActive) {
@@ -212,7 +194,7 @@ public final class SafeSaveManager {
                     .withStyle(ChatFormatting.GREEN));
             return;
         }
-        int elapsed = Math.max(server.getTickCount() - session.startupRegionBarrierStartedAt, 0);
+        int elapsed = barrierElapsedTicks(server, session);
         ProtectedRegionManager.StartupStatus status = ProtectedRegionManager.startupStatus(server);
         if (status.complete()) {
             session.startupRegionBarrierActive = false;
@@ -245,12 +227,11 @@ public final class SafeSaveManager {
         }
     }
 
-    /** 玩家进入时，若仍由 SafeSave 启动屏障冻结，则告知最长剩余等待时间。 */
     public static void onPlayerJoined(final ServerPlayer player) {
         SafeSaveSession session = SafeSaveSession.current();
         MinecraftServer server = player.level().getServer();
         if (session == null || server == null || !session.startupRegionBarrierActive
-                || !server.tickRateManager().isFrozen()) {
+                || !server.tickRateManager().isFrozen() || player instanceof EntityPlayerMPFake) {
             return;
         }
         player.sendSystemMessage(startupFrozenMessage(server, session));
@@ -263,7 +244,7 @@ public final class SafeSaveManager {
 
     private static Component startupFrozenMessage(final MinecraftServer server,
                                                   final SafeSaveSession session) {
-        int elapsed = Math.max(server.getTickCount() - session.startupRegionBarrierStartedAt, 0);
+        int elapsed = barrierElapsedTicks(server, session);
         int remainingTicks = Math.max(Math.max(SafeSaveRules.safeSaveRegionTimeout, 0) - elapsed, 0);
         int remainingSeconds = (remainingTicks + 19) / 20;
         return Component.translatable("safesave.message.startup_frozen", remainingTicks, remainingSeconds)
@@ -280,10 +261,6 @@ public final class SafeSaveManager {
     // 生命周期：区块 NBT 解析与序列化
     // -----------------------------------------------------------------------
 
-    /**
-     * 在 {@code SerializableChunkData.parse} 的 HEAD 处调用：读取区块 NBT 的 {@code safeSave}
-     * 子节点，登记为待恢复快照。
-     */
     public static void onChunkTagRead(final ServerLevel level, final CompoundTag chunkData) {
         if (!enabled()) {
             return;
@@ -295,11 +272,6 @@ public final class SafeSaveManager {
         ChunkNbtBridge.onChunkTagRead(level, chunkData, session, SafeSaveLevelAccess.of(level));
     }
 
-    /**
-     * 在 {@code SerializableChunkData.copyOf} 的 RETURN 处调用：为即将序列化的区块计算
-     * safe-save 子节点，并通过 {@link SerializableChunkDataAccess} 暂存到 record 实例上，
-     * 供后台写线程在 {@code write()} 时注入 NBT。
-     */
     public static void onChunkSerializing(final ServerLevel level,
                                           final ChunkAccess chunk,
                                           final Object data) {
@@ -314,12 +286,6 @@ public final class SafeSaveManager {
         ((SerializableChunkDataAccess) data).SS$setSafeSaveTag(tag);
     }
 
-    /**
-     * 在 {@code SerializableChunkData.write} 的 RETURN 处调用：把 copyOf 阶段计算好的 tag
-     * 注入区块 NBT。
-     *
-     * @return 注入后的 NBT；无 safe-save 数据时返回原 tag
-     */
     public static CompoundTag injectChunkData(final Object data,
                                               final CompoundTag root) {
         CompoundTag tag = ((SerializableChunkDataAccess) data).SS$getSafeSaveTag();
@@ -333,10 +299,6 @@ public final class SafeSaveManager {
     // 生命周期：tick 与保存
     // -----------------------------------------------------------------------
 
-    /**
-     * 在 {@code ServerLevel.tick} 的 HEAD 处调用：解冻后第一个正常 tick 统一重建
-     * 新加载区块的计划刻/方块事件，并协调活塞代数与实体顺序。
-     */
     public static void onLevelTickStart(final ServerLevel level) {
         if (!shouldRun()) {
             return;
@@ -360,11 +322,11 @@ public final class SafeSaveManager {
         }
     }
 
-    /**
-     * 写世界级旁置元数据。在 {@code MinecraftServer.saveAllChunks} 的 HEAD 处调用（自动保存、
-     * {@code /save-all}、关闭时的最终保存），也在 Carpet 的 {@code onServerClosed}
-     * （{@code stopServer} 的 HEAD）处调用：关闭后会话刻意保留（不得 clear），因为原版在
-     * onServerClosed 之后还会保存一次，此时区块序列化仍要读取会话里的 store。
+    /*
+      在 MinecraftServer.saveAllChunks 的 HEAD 处调用（自动保存、save-all、
+     关闭时的最终保存），也在 Carpet 的 onServerClosed}（{stopServer} 的 HEAD）
+     处调用：关闭后会话刻意保留（不得 clear），因为原版在 onServerClosed 之后还会保存一次，
+     此时区块序列化仍要读取会话里的 store。
      */
     public static void saveAll(final MinecraftServer server) {
         if (!shouldRun()) {
