@@ -166,6 +166,21 @@ public final class BlockEventManager {
         }
     }
 
+    /** 清掉区块遗留在世界级队列里的方块事件。序号表必须一起清：restoreChunkEvents 用
+     * {@code putIfAbsent} 写入保存的序号，残留的旧条目会让复活后的事件沿用过期序号。 */
+    public static int clearChunkEvents(final ServerLevel level, final long packedChunkPos,
+                                       final SafeSaveLevelState levelState) {
+        ObjectLinkedOpenHashSet<BlockEventData> queue = level.blockEvents;
+        int before = queue.size();
+        queue.removeIf(event -> ChunkPos.pack(event.pos()) == packedChunkPos);
+        int removed = before - queue.size();
+        if (removed > 0) {
+            levelState.blockEventOrders.keySet()
+                    .removeIf(event -> ChunkPos.pack(event.pos()) == packedChunkPos);
+        }
+        return removed;
+    }
+
     public static int pendingCount(final Level level) {
         if (level instanceof ServerLevel serverLevel) {
             return serverLevel.blockEvents.size();

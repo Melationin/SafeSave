@@ -33,7 +33,7 @@ public final class RegionLifecycle {
 
     /**
      * 原版真正开始模拟方块刻的最低级别。低于此值只意味着"被加载"，原版不会模拟它 ——
-     * 因此这也是 {@link #maySimulate} 想要保护的那条线。
+     * 这也是"失活 region 的区块恒为 33 级、因此不需要门控"这条推理的依据。
      *
      * <p>三个级别的字段（{@code FULL_CHUNK_LEVEL} 等）在 {@code ChunkLevel} 里都是 private，
      * 但 {@code byStatus} 是 public，原版自己也这么用（{@code DistanceManager.PLAYER_TICKET_LEVEL}）。
@@ -61,19 +61,13 @@ public final class RegionLifecycle {
         return SafeSaveLevelAccess.of(level).protectedRegions.suspendedAt.containsKey(key);
     }
 
-    public static boolean maySimulate(ServerLevel level, long key) {
-        return !isProtected(level, key)
-                || SafeSaveLevelAccess.of(level).protectedRegions.ticketedChunks.contains(key);
-    }
-
     /**
      * region 的身份就是 {@code ticketedChunks} —— 我们持有 {@link #REGION_TICKET_LEVEL} 票的那批
      * 区块，一格不多。所以判据是**集合成员**，而不是"是否落在票据的副产品光晕里"：
      * 光晕（32/33 那两圈）是派生量，且自终止 —— 它一旦失去 {@code BLOCK_TICKING}，
      * 上面的机器就停跑，不再产生区块查询，它自己加的 UNKNOWN 票 1 tick 内过期。
      *
-     * <p>用 O(1) 成员判断而非扫描光晕，既省掉每次调用的 Stream 分配与拆箱，
-     * 也与 {@link #maySimulate} 的 {@code ||} 子句保持同一集合、同一语义。
+     * <p>用 O(1) 成员判断而非扫描光晕，省掉每次调用的 Stream 分配与拆箱。
      */
     public static boolean coveredByRegionTicket(ServerLevel level, long key) {
         return SafeSaveLevelAccess.of(level).protectedRegions.ticketedChunks.contains(key);
@@ -137,7 +131,8 @@ public final class RegionLifecycle {
             level.getServer().managedBlock(() -> {
                 source.pollTask();
                 for (long key : required) {
-                    if (!level.isPositionTickingWithEntitiesLoaded(key)
+                    if (!source.chunkMap.getDistanceManager().inEntityTickingRange(key)
+                            || !level.isPositionTickingWithEntitiesLoaded(key)
                             || !level.areEntitiesActuallyLoadedAndTicking(ChunkPos.unpack(key))
                             || !TickContainers.isReady(TickContainers.blockContainers(level).get(key),
                                 TickContainers.fluidContainers(level).get(key))) return false;
@@ -183,7 +178,12 @@ public final class RegionLifecycle {
             if (ticks != null) snapshot = new SafeSaveStore.ChunkSnapshot(ticks.blockTicks(), ticks.fluidTicks(),
                     BlockEventManager.snapshotChunkEvents(level, key, state), time);
         }
-        if (snapshot != null) state.protectedRegions.suspendedSnapshots.put(key, snapshot);
+        if (snapshot != null) {
+            state.protectedRegions.suspendedSnapshots.put(key, snapshot);
+            // 快照已就位才清空活容器：失活期间遗留的绝对刻若被执行，复活时灌回快照会重复执行。
+            ScheduledTickManager.clearChunkTicks(chunk);
+            BlockEventManager.clearChunkEvents(level, key, state);
+        }
         for (var blockEntity : chunk.getBlockEntities().values()) {
             if (blockEntity instanceof PistonOrderHolder piston) piston.SS$suspendAt(time);
         }

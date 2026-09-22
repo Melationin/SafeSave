@@ -13,11 +13,6 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import com.carpet.safesave.safesave.region.RegionLifecycle;
-import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.server.level.ServerPlayer;
 
 import java.util.function.BooleanSupplier;
 
@@ -40,29 +35,6 @@ public abstract class ServerLevelMixin implements SafeSaveLevelAccess {
     private void SS$onWorldTickHead(final BooleanSupplier haveTime, final CallbackInfo ci) {
         ServerLevel self = (ServerLevel) (Object) this;
         SafeSaveManager.onLevelTickStart(self);
-    }
-
-    // Chunks promoted in the middle of a tick wait for the next HEAD barrier.
-    @Inject(method = "shouldTickBlocksAt(J)Z", at = @At("HEAD"), cancellable = true)
-    private void SS$gateBlocks(long key, CallbackInfoReturnable<Boolean> cir) {
-        if (!RegionLifecycle.maySimulate((ServerLevel) (Object) this, key)) cir.setReturnValue(false);
-    }
-
-    @Inject(method = "tickChunk", at = @At("HEAD"), cancellable = true)
-    private void SS$gateRandomTicks(LevelChunk chunk, int speed, CallbackInfo ci) {
-        if (!RegionLifecycle.maySimulate((ServerLevel) (Object) this, chunk.getPos().pack())) ci.cancel();
-    }
-
-    @Inject(method = "tickNonPassenger", at = @At("HEAD"), cancellable = true)
-    private void SS$gateEntity(Entity entity, CallbackInfo ci) {
-        if (!(entity instanceof ServerPlayer)
-                && !RegionLifecycle.maySimulate((ServerLevel) (Object) this, entity.chunkPosition().pack())) ci.cancel();
-    }
-
-    @Inject(method = "tickPassenger", at = @At("HEAD"), cancellable = true)
-    private void SS$gatePassenger(Entity vehicle, Entity entity, CallbackInfo ci) {
-        if (!(entity instanceof ServerPlayer)
-                && !RegionLifecycle.maySimulate((ServerLevel) (Object) this, entity.chunkPosition().pack())) ci.cancel();
     }
 
     /**

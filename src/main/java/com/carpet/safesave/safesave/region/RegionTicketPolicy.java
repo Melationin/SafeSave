@@ -29,9 +29,7 @@ public final class RegionTicketPolicy {
     /** 从外部根重算应被接管的 region 集合（**绝不**以上一轮的 region 票据为根，否则会自我续期）。
      *
      * <p>触发条件是"原版本来就会模拟"：外部票把某个 region 区块推到 {@code BLOCK_TICKING}
-     * 及以上，或已被选中的 region 区块的 {@code BLOCK_TICKING} 光晕罩到了它 —— 因为
-     * {@code maySimulate} 对"受保护但无票"的区块返回 false，这种区块若不接管就会被冻住，
-     * 而原版本来是模拟的。
+     * 及以上，或已被选中的 region 区块的 {@code BLOCK_TICKING} 光晕罩到了它。
      *
      * @param regionRadius 我们自己的 REGION 票（{@code ENTITY_TICKING}）撑出的
      *                     {@code BLOCK_TICKING} 光晕半径，即 {@code 1}。

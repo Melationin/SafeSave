@@ -6,13 +6,10 @@ import org.spongepowered.asm.mixin.Shadow;
 import com.carpet.safesave.safesave.region.RegionLifecycle;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.NaturalSpawner;
-import net.minecraft.world.entity.MobCategory;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import java.util.List;
 import net.minecraft.server.level.Ticket;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
@@ -58,11 +55,5 @@ public abstract class ServerChunkCacheMixin {
         if (this.getChunkNow(pos.x(), pos.z()) != null) {
             ci.cancel();
         }
-    }
-
-    @Inject(method = "tickSpawningChunk", at = @At("HEAD"), cancellable = true)
-    private void SS$gateSpawning(LevelChunk chunk, long elapsed, List<MobCategory> categories,
-                                NaturalSpawner.SpawnState state, CallbackInfo ci) {
-        if (!RegionLifecycle.maySimulate(this.level, chunk.getPos().pack())) ci.cancel();
     }
 }
