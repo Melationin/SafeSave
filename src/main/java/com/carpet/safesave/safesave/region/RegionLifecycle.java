@@ -7,6 +7,7 @@ import com.carpet.safesave.safesave.blockentity.PistonOrderHolder;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import com.carpet.safesave.safesave.scheduled.TickContainers;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
@@ -58,7 +59,7 @@ public final class RegionLifecycle {
     }
 
     public static boolean isSuspended(ServerLevel level, long key) {
-        return SafeSaveLevelAccess.of(level).protectedRegions.suspendedAt.containsKey(key);
+        return SafeSaveLevelAccess.of(level).protectedRegions.suspendedAt.contains(key);
     }
 
     public static void beforeTick(ServerLevel level) {
@@ -126,14 +127,14 @@ public final class RegionLifecycle {
             for (long key : required) {
                 var snapshot = regions.suspendedSnapshots.remove(key);
                 if (snapshot != null && SafeSaveRules.safeSave) state.pendingChunks.put(key, snapshot);
-                if (regions.suspendedAt.remove(key) != null) {
+                if (regions.suspendedAt.remove(key)) {
                     com.carpet.safesave.safesave.blockentity.PistonManager.markPistonTickOrderDirty();
                 }
                 ChunkPos pos = ChunkPos.unpack(key);
                 source.getChunkNow(pos.x(), pos.z()).markUnsaved();
             }
             // Removed definitions / disabled rule must not leave stale suspension state behind.
-            for (long key : new HashSet<>(regions.suspendedAt.keySet())) {
+            for (long key : new LongOpenHashSet(regions.suspendedAt)) {
                 if (!isProtected(level, key)) {
                     var snapshot = regions.suspendedSnapshots.remove(key);
                     if (snapshot != null && SafeSaveRules.safeSave) state.pendingChunks.put(key, snapshot);
@@ -152,7 +153,7 @@ public final class RegionLifecycle {
         LevelChunk chunk = level.getChunkSource().getChunkNow(pos.x(), pos.z());
         if (chunk == null) return;
         long time = level.getGameTime();
-        state.protectedRegions.suspendedAt.put(key, time);
+        state.protectedRegions.suspendedAt.add(key);
         state.knownChunks.remove(key);
         chunk.markUnsaved();
         if (!SafeSaveRules.safeSave) return;

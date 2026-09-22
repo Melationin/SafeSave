@@ -65,10 +65,14 @@ public final class PistonManager {
             levelState.pistonOrderRebuiltAt = generation;
             // Includes chunks revived before physical unload, whose NBT load hook never fires.
             for (var ticker : level.blockEntityTickers) {
-                if (ticker.isRemoved() || com.carpet.safesave.safesave.region.RegionLifecycle.isSuspended(
-                        level, net.minecraft.world.level.ChunkPos.pack(ticker.getPos()))
-                        || !level.getBlockState(ticker.getPos()).is(Blocks.MOVING_PISTON)) continue;
-                if (level.getBlockEntity(ticker.getPos()) instanceof PistonOrderHolder piston) {
+                if (ticker.isRemoved()) continue;
+                // 锂 sleeping 的哨兵 ticker 恒返回 pos == null 且 isRemoved() == false，必须先取出判空。
+                BlockPos pos = ticker.getPos();
+                if (pos == null) continue;
+                if (com.carpet.safesave.safesave.region.RegionLifecycle.isSuspended(
+                        level, net.minecraft.world.level.ChunkPos.pack(pos))) continue;
+                if (!level.getBlockState(pos).is(Blocks.MOVING_PISTON)) continue;
+                if (level.getBlockEntity(pos) instanceof PistonOrderHolder piston) {
                     piston.SS$rebaseTime(level.getGameTime());
                 }
             }

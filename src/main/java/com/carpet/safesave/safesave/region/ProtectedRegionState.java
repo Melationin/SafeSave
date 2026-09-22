@@ -1,5 +1,8 @@
 package com.carpet.safesave.safesave.region;
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -10,7 +13,7 @@ import java.util.Map;
 public final class ProtectedRegionState {
 
     public final java.util.Set<Long> ticketedChunks = new java.util.HashSet<>();
-    public final Map<Long, Long> suspendedAt = new java.util.HashMap<>();
+    public final LongSet suspendedAt = new LongOpenHashSet();
     public final Map<Long, com.carpet.safesave.safesave.SafeSaveStore.ChunkSnapshot> suspendedSnapshots = new java.util.HashMap<>();
     public boolean waiting;
 
