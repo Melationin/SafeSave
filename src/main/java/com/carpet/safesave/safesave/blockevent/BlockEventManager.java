@@ -12,7 +12,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.BlockEventData;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 
 import java.util.ArrayList;
@@ -64,12 +63,6 @@ public final class BlockEventManager {
         levelState.blockEventOrders = current;
         levelState.nextBlockEventOrder = Math.max(levelState.nextBlockEventOrder, next);
     }
-
-    public static int liveCount(final Level level) {
-        return level instanceof ServerLevel serverLevel ? serverLevel.blockEvents.size() : -1;
-    }
-
-
 
     public static Map<Long, List<SafeBlockEvent>> snapshotByChunk(final ServerLevel level,
                                                                   final SafeSaveLevelState levelState) {
@@ -179,16 +172,5 @@ public final class BlockEventManager {
                     .removeIf(event -> ChunkPos.pack(event.pos()) == packedChunkPos);
         }
         return removed;
-    }
-
-    public static int pendingCount(final Level level) {
-        if (level instanceof ServerLevel serverLevel) {
-            return serverLevel.blockEvents.size();
-        }
-        return -1;
-    }
-
-    public static int liveEventCount(final Level level) {
-        return pendingCount(level);
     }
 }

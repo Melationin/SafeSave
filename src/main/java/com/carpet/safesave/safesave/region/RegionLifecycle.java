@@ -61,22 +61,6 @@ public final class RegionLifecycle {
         return SafeSaveLevelAccess.of(level).protectedRegions.suspendedAt.containsKey(key);
     }
 
-    /**
-     * region 的身份就是 {@code ticketedChunks} —— 我们持有 {@link #REGION_TICKET_LEVEL} 票的那批
-     * 区块，一格不多。所以判据是**集合成员**，而不是"是否落在票据的副产品光晕里"：
-     * 光晕（32/33 那两圈）是派生量，且自终止 —— 它一旦失去 {@code BLOCK_TICKING}，
-     * 上面的机器就停跑，不再产生区块查询，它自己加的 UNKNOWN 票 1 tick 内过期。
-     *
-     * <p>用 O(1) 成员判断而非扫描光晕，省掉每次调用的 Stream 分配与拆箱。
-     */
-    public static boolean coveredByRegionTicket(ServerLevel level, long key) {
-        return SafeSaveLevelAccess.of(level).protectedRegions.ticketedChunks.contains(key);
-    }
-
-    public static long snapshotTime(ServerLevel level, long key) {
-        return SafeSaveLevelAccess.of(level).protectedRegions.suspendedAt.getOrDefault(key, level.getGameTime());
-    }
-
     public static void beforeTick(ServerLevel level) {
         var state = SafeSaveLevelAccess.of(level);
         var regions = state.protectedRegions;

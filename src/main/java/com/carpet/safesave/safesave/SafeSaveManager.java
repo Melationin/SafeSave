@@ -14,8 +14,6 @@ import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import com.carpet.safesave.safesave.region.ProtectedRegionCodec;
 import com.carpet.safesave.safesave.region.ProtectedRegionManager;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -27,8 +25,6 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import java.util.Set;
 
 public final class SafeSaveManager {
-
-    public static final String RULE_NAME = "safeSave";
 
     private SafeSaveManager() {
     }
@@ -44,44 +40,6 @@ public final class SafeSaveManager {
     public static SafeSaveStore store() {
         SafeSaveSession session = SafeSaveSession.current();
         return session == null ? null : session.store;
-    }
-
-    public static int restoredTickCount() {
-        SafeSaveSession session = SafeSaveSession.current();
-        return session == null ? 0 : session.restoredTickCount.get();
-    }
-
-    public static int droppedTickCount() {
-        SafeSaveSession session = SafeSaveSession.current();
-        return session == null ? 0 : session.droppedTickCount.get();
-    }
-
-    public static int restoredBlockEventCount() {
-        SafeSaveSession session = SafeSaveSession.current();
-        return session == null ? 0 : session.restoredBlockEventCount.get();
-    }
-
-    public static int droppedBlockEventCount() {
-        SafeSaveSession session = SafeSaveSession.current();
-        return session == null ? 0 : session.droppedBlockEventCount.get();
-    }
-
-    public static int loadedTickCount() {
-        SafeSaveSession session = SafeSaveSession.current();
-        return session == null ? 0 : session.loadedTickCount.get();
-    }
-
-    public static int loadedBlockEventCount() {
-        SafeSaveSession session = SafeSaveSession.current();
-        return session == null ? 0 : session.loadedBlockEventCount.get();
-    }
-
-    public static int pendingChunkCount(final ServerLevel level) {
-        return SafeSaveLevelAccess.of(level).pendingChunks.size();
-    }
-
-    public static LongSet pendingChunkKeys(final ServerLevel level) {
-        return new LongOpenHashSet(SafeSaveLevelAccess.of(level).pendingChunks.keySet());
     }
 
     // -----------------------------------------------------------------------

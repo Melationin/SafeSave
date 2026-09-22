@@ -3,7 +3,6 @@ package com.carpet.safesave.safesave.entity;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
-import com.carpet.safesave.safesave.SafeSaveLevelState;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.entity.EntityTickList;

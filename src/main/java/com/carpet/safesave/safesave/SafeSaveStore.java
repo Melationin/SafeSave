@@ -51,10 +51,6 @@ public final class SafeSaveStore {
             return this.blockTicks.isEmpty() && this.fluidTicks.isEmpty()
                     && this.blockEvents.isEmpty();
         }
-
-        public int total() {
-            return this.blockTicks.size() + this.fluidTicks.size() + this.blockEvents.size();
-        }
     }
 
     public static final class DimensionData {
