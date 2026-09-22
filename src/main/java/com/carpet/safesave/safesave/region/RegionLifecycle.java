@@ -10,6 +10,8 @@ import com.carpet.safesave.safesave.scheduled.TickContainers;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ChunkLevel;
+import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.Ticket;
 import net.minecraft.server.level.TicketType;
@@ -25,6 +27,24 @@ import java.util.Set;
 public final class RegionLifecycle {
     public static final TicketType REGION = new TicketType(0, TicketType.FLAG_LOADING
             | TicketType.FLAG_SIMULATION | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
+
+    /** REGION 票的层级，也是整个 region 被推进到的目标级别：ENTITY_TICKING。 */
+    public static final int REGION_TICKET_LEVEL = ChunkLevel.byStatus(FullChunkStatus.ENTITY_TICKING);
+
+    /**
+     * 原版真正开始模拟方块刻的最低级别。低于此值只意味着"被加载"，原版不会模拟它 ——
+     * 因此这也是 {@link #maySimulate} 想要保护的那条线。
+     *
+     * <p>三个级别的字段（{@code FULL_CHUNK_LEVEL} 等）在 {@code ChunkLevel} 里都是 private，
+     * 但 {@code byStatus} 是 public，原版自己也这么用（{@code DistanceManager.PLAYER_TICKET_LEVEL}）。
+     */
+    private static final int SIMULATION_LEVEL = ChunkLevel.byStatus(FullChunkStatus.BLOCK_TICKING);
+
+    /**
+     * REGION 票自己撑出的、原版会真正模拟的那一圈（{@code 32 - 31 = 1}）。
+     * 距离 2 的那圈是 {@code FULL}，原版惰性，不需要接管。
+     */
+    private static final int REGION_SIMULATION_RADIUS = SIMULATION_LEVEL - REGION_TICKET_LEVEL;
 
     private RegionLifecycle() {}
 
@@ -46,9 +66,17 @@ public final class RegionLifecycle {
                 || SafeSaveLevelAccess.of(level).protectedRegions.ticketedChunks.contains(key);
     }
 
+    /**
+     * region 的身份就是 {@code ticketedChunks} —— 我们持有 {@link #REGION_TICKET_LEVEL} 票的那批
+     * 区块，一格不多。所以判据是**集合成员**，而不是"是否落在票据的副产品光晕里"：
+     * 光晕（32/33 那两圈）是派生量，且自终止 —— 它一旦失去 {@code BLOCK_TICKING}，
+     * 上面的机器就停跑，不再产生区块查询，它自己加的 UNKNOWN 票 1 tick 内过期。
+     *
+     * <p>用 O(1) 成员判断而非扫描光晕，既省掉每次调用的 Stream 分配与拆箱，
+     * 也与 {@link #maySimulate} 的 {@code ||} 子句保持同一集合、同一语义。
+     */
     public static boolean coveredByRegionTicket(ServerLevel level, long key) {
-        return SafeSaveLevelAccess.of(level).protectedRegions.ticketedChunks.stream()
-                .anyMatch(source -> RegionTicketPolicy.reaches(source, key, 2));
+        return SafeSaveLevelAccess.of(level).protectedRegions.ticketedChunks.contains(key);
     }
 
     public static long snapshotTime(ServerLevel level, long key) {
@@ -67,21 +95,28 @@ public final class RegionLifecycle {
         for (var entry : storage.tickets.long2ObjectEntrySet()) {
             for (Ticket ticket : entry.getValue()) {
                 if (ticket.getType() != REGION && ticket.getType().doesLoad() && !ticket.isTimedOut()) {
-                    demands.add(new RegionTicketPolicy.Demand(entry.getLongKey(), 33 - ticket.getTicketLevel()));
+                    // 触发边界 = 原版的模拟边界：BLOCK_TICKING 及以上才接管整个 region。
+                    // 用 FULL(33) 会多激活一格、让 region 比原版早一圈满速运行；
+                    // 用 ENTITY_TICKING(31) 会漏掉 32 那一圈、把它冻住。
+                    demands.add(new RegionTicketPolicy.Demand(entry.getLongKey(),
+                            SIMULATION_LEVEL - ticket.getTicketLevel()));
                 }
             }
         }
         Set<Long> required = SafeSaveRules.safeSaveRegions
                 ? RegionTicketPolicy.required(regions.byName.values().stream()
-                    .map(region -> (java.util.Collection<Long>) region.chunks).toList(), demands)
+                    .map(region -> (java.util.Collection<Long>) region.chunks).toList(), demands,
+                    REGION_SIMULATION_RADIUS)
                 : Set.of();
         Set<Long> leaving = new HashSet<>(regions.ticketedChunks);
         leaving.removeAll(required);
         // Freeze every departing chunk at one world time BEFORE dropping any ticket.
         for (long key : leaving) suspend(level, key);
-        for (long key : leaving) storage.removeTicket(key, new Ticket(REGION, 31));
+        for (long key : leaving) storage.removeTicket(key, new Ticket(REGION, REGION_TICKET_LEVEL));
         for (long key : required) {
-            if (!regions.ticketedChunks.contains(key)) storage.addTicket(key, new Ticket(REGION, 31));
+            if (!regions.ticketedChunks.contains(key)) {
+                storage.addTicket(key, new Ticket(REGION, REGION_TICKET_LEVEL));
+            }
         }
         regions.ticketedChunks.clear();
         regions.ticketedChunks.addAll(required);

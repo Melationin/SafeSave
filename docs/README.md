@@ -4,7 +4,8 @@
 
 | 文档 | 内容 | 状态 |
 |---|---|---|
-| [同会话区块卸载-重载的计划刻恢复](same-session-chunk-reload.md) | 不重启的卸载-重载场景下计划刻无法恢复的问题、根因、阶段 1 修复 | 已实施，待实机验证 |
+| [设计文档（v5）](../DESIGN.md) | 当前架构、数据格式、每个注入点的选择理由、`subTickCount` 为何必须走旁置、v3→v5 差异 | 与 FORMAT_VERSION = 5 同步 |
+| [同会话区块卸载-重载的计划刻恢复](same-session-chunk-reload.md) | 不重启的卸载-重载场景下计划刻无法恢复的问题、根因、阶段 1 修复 | 历史记录：阶段 1 机制描述的是 v3，已被 v5 取代 |
 | [锂/C2ME 与 SafeSave 的兼容性分析](lithium-c2me-conflict-analysis.md) | LevelChunkTicks 冲突机制、三方分析、已实施的公共 API 修复、锂残留索引问题、已排除项、残余风险 | 已实施 |
 | [实体 tick 序号功能接入记录](entity-order-integration.md) | 实体序号持久化 + unfreeze 全量重建 + 区块内维护的设计与接入点 | 已实施 |
 | [原版区块加载机制分析](vanilla-chunk-loading.md) | tick 中区块加载的控制阶段、卸载异步保存模型、冻结期间行为、C2ME 差异、对 safesave 的意义 | 分析文档 |
