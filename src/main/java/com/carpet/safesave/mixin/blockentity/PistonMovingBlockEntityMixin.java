@@ -34,6 +34,23 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
     @Unique
     private long SS$order = Long.MIN_VALUE;
 
+    @Unique
+    private long SS$snapshotTime = Long.MIN_VALUE;
+
+    @Override
+    public void SS$suspendAt(long gameTime) {
+        if (this.SS$snapshotTime == Long.MIN_VALUE) this.SS$snapshotTime = gameTime;
+    }
+
+    @Override
+    public void SS$rebaseTime(long gameTime) {
+        if (this.SS$snapshotTime != Long.MIN_VALUE) {
+            this.lastTicked = com.carpet.safesave.util.ResumeTime.rebase(
+                    this.lastTicked, this.SS$snapshotTime, gameTime);
+            this.SS$snapshotTime = Long.MIN_VALUE;
+        }
+    }
+
     @Override
     public long SS$pistonOrder() {
         return this.SS$order;
@@ -63,6 +80,12 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
         tag.putFloat("progress", this.progress);
         tag.putFloat("progress_o", this.progressO);
         tag.putLong("lastTicked", this.lastTicked);
+        var self = (PistonMovingBlockEntity) (Object) this;
+        if (this.SS$snapshotTime != Long.MIN_VALUE) {
+            tag.putLong("snapshotGameTime", this.SS$snapshotTime);
+        } else if (self.getLevel() != null) {
+            tag.putLong("snapshotGameTime", self.getLevel().getGameTime());
+        }
         tag.putLong("order", this.SS$order);
     }
 
@@ -79,6 +102,7 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
                 this.progressO = tag.getFloatOr("progress_o", savedProgress);
             }
             this.lastTicked = tag.getLongOr("lastTicked", this.lastTicked);
+            this.SS$snapshotTime = tag.getLongOr("snapshotGameTime", Long.MIN_VALUE);
 
             long order = tag.getLongOr("order", Long.MIN_VALUE);
             if (order != Long.MIN_VALUE) {

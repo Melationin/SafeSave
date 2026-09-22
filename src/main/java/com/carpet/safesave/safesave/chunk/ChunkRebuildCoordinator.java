@@ -38,6 +38,7 @@ public final class ChunkRebuildCoordinator {
         }
         String dimension = dimensionId(level);
         LongSet ready = TickContainers.collectReadyChunks(level);
+        ready.removeAll(levelState.protectedRegions.suspendedAt.keySet());
 
         LongSet previous = levelState.knownChunks;
         LongOpenHashSet newKeys = new LongOpenHashSet(ready.size());

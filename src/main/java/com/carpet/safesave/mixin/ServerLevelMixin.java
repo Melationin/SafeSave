@@ -4,18 +4,20 @@ import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveManager;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
-import com.carpet.safesave.safesave.entity.ServerLevelTickListAccess;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.BlockEventData;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.entity.EntityTickList;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
-import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import com.carpet.safesave.safesave.region.RegionLifecycle;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.server.level.ServerPlayer;
 
 import java.util.function.BooleanSupplier;
 
@@ -23,15 +25,11 @@ import java.util.function.BooleanSupplier;
  * 维度级状态直接挂在 {@code ServerLevel} 实例上，随世界创建/丢弃天然隔离。
  */
 @Mixin(ServerLevel.class)
-public abstract class ServerLevelMixin implements ServerLevelTickListAccess, SafeSaveLevelAccess {
+public abstract class ServerLevelMixin implements SafeSaveLevelAccess {
 
     /** parse 线程经 {@link SafeSaveLevelAccess} 读取。 */
     @Unique
     private final SafeSaveLevelState SS$safeSaveLevelState = new SafeSaveLevelState();
-
-    @Accessor("entityTickList")
-    @Override
-    public abstract EntityTickList SS$getEntityTickList();
 
     @Override
     public SafeSaveLevelState SS$safeSaveLevelState() {
@@ -42,6 +40,29 @@ public abstract class ServerLevelMixin implements ServerLevelTickListAccess, Saf
     private void SS$onWorldTickHead(final BooleanSupplier haveTime, final CallbackInfo ci) {
         ServerLevel self = (ServerLevel) (Object) this;
         SafeSaveManager.onLevelTickStart(self);
+    }
+
+    // Chunks promoted in the middle of a tick wait for the next HEAD barrier.
+    @Inject(method = "shouldTickBlocksAt(J)Z", at = @At("HEAD"), cancellable = true)
+    private void SS$gateBlocks(long key, CallbackInfoReturnable<Boolean> cir) {
+        if (!RegionLifecycle.maySimulate((ServerLevel) (Object) this, key)) cir.setReturnValue(false);
+    }
+
+    @Inject(method = "tickChunk", at = @At("HEAD"), cancellable = true)
+    private void SS$gateRandomTicks(LevelChunk chunk, int speed, CallbackInfo ci) {
+        if (!RegionLifecycle.maySimulate((ServerLevel) (Object) this, chunk.getPos().pack())) ci.cancel();
+    }
+
+    @Inject(method = "tickNonPassenger", at = @At("HEAD"), cancellable = true)
+    private void SS$gateEntity(Entity entity, CallbackInfo ci) {
+        if (!(entity instanceof ServerPlayer)
+                && !RegionLifecycle.maySimulate((ServerLevel) (Object) this, entity.chunkPosition().pack())) ci.cancel();
+    }
+
+    @Inject(method = "tickPassenger", at = @At("HEAD"), cancellable = true)
+    private void SS$gatePassenger(Entity vehicle, Entity entity, CallbackInfo ci) {
+        if (!(entity instanceof ServerPlayer)
+                && !RegionLifecycle.maySimulate((ServerLevel) (Object) this, entity.chunkPosition().pack())) ci.cancel();
     }
 
     /**

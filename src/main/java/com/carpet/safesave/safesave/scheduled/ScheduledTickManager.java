@@ -54,8 +54,7 @@ public final class ScheduledTickManager {
     /*
      * 恢复单个区块的计划刻（方块事件由协调层统一恢复）。
      *
-     * 顺延规则：对已过期（code triggerTick < currentGameTime）的刻，按保存时剩余间隔
-     * （triggerTick - snapshotGameTime）从当前世界时间重新计时；未过期的保持绝对时刻。
+     * 所有刻按保存时剩余间隔（triggerTick - snapshotGameTime）从恢复时间重新计时。
      *  snapshotGameTime == Long.MIN_VALUE 时跳过顺延（旧区块数据）。
      */
     @SuppressWarnings("unchecked")
@@ -120,12 +119,8 @@ public final class ScheduledTickManager {
                 continue;
             }
             T type = registry.getValue(id);
-            long trigger = entry.triggerTick();
-            if (snapshotGameTime != Long.MIN_VALUE) {
-                long remaining = trigger - snapshotGameTime;
-                trigger = currentGameTime + remaining;
-               // trigger = Math.max(trigger, currentGameTime + Math.max(remaining, 0L));
-            }
+            long trigger = com.carpet.safesave.util.ResumeTime.rebase(
+                    entry.triggerTick(), snapshotGameTime, currentGameTime);
             ticks.add(new ScheduledTick<>(
                     type,
                     new BlockPos(entry.x(), entry.y(), entry.z()),

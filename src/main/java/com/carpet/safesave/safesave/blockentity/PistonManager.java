@@ -63,6 +63,15 @@ public final class PistonManager {
         long generation = session.pistonOrderGeneration.get();
         if (levelState.pistonOrderRebuiltAt < generation) {
             levelState.pistonOrderRebuiltAt = generation;
+            // Includes chunks revived before physical unload, whose NBT load hook never fires.
+            for (var ticker : level.blockEntityTickers) {
+                if (ticker.isRemoved() || com.carpet.safesave.safesave.region.RegionLifecycle.isSuspended(
+                        level, net.minecraft.world.level.ChunkPos.pack(ticker.getPos()))
+                        || !level.getBlockState(ticker.getPos()).is(Blocks.MOVING_PISTON)) continue;
+                if (level.getBlockEntity(ticker.getPos()) instanceof PistonOrderHolder piston) {
+                    piston.SS$rebaseTime(level.getGameTime());
+                }
+            }
             rebuildPistonTickOrder(level);
         }
     }

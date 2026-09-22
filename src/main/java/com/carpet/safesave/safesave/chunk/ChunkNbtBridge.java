@@ -73,6 +73,8 @@ public final class ChunkNbtBridge {
         // 待恢复快照只有在 rebuildNewChunks 消费后才会移除。这里只读取（peek），
         // 这样在 load→rebuild 窗口内被保存多少次，写回磁盘的都是原始绝对快照。
         SafeSaveStore.ChunkSnapshot snapshot = levelState.pendingChunks.get(key);
+        SafeSaveStore.ChunkSnapshot suspended = levelState.protectedRegions.suspendedSnapshots.get(key);
+        if (suspended != null) snapshot = suspended;
         if (snapshot == null) {
             if (!(chunk.getBlockTicks() instanceof SafeTickContainer)
                     || !(chunk.getFluidTicks() instanceof SafeTickContainer)) {

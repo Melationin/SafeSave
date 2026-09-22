@@ -86,3 +86,20 @@ publishing {
 stonecutter {
     // 子项目配置
 }
+
+tasks.register('compileRegionRegression', JavaCompile) {
+    dependsOn tasks.named('classes')
+    source = rootProject.files('regression/RegionRegressionTest.java')
+    classpath = sourceSets.main.output
+    destinationDirectory = layout.buildDirectory.dir('classes/regionRegression')
+}
+
+tasks.register('regionRegressionTest', JavaExec) {
+    dependsOn tasks.named('compileRegionRegression')
+    classpath = files(sourceSets.main.output, layout.buildDirectory.dir('classes/regionRegression'))
+    mainClass = 'com.carpet.safesave.RegionRegressionTest'
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('regionRegressionTest')
+}

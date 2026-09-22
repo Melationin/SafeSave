@@ -300,6 +300,7 @@ public final class SafeSaveManager {
     // -----------------------------------------------------------------------
 
     public static void onLevelTickStart(final ServerLevel level) {
+        com.carpet.safesave.safesave.region.RegionLifecycle.beforeTick(level);
         if (!shouldRun()) {
             return;
         }

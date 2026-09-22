@@ -9,6 +9,11 @@ import java.util.Map;
  */
 public final class ProtectedRegionState {
 
+    public final java.util.Set<Long> ticketedChunks = new java.util.HashSet<>();
+    public final Map<Long, Long> suspendedAt = new java.util.HashMap<>();
+    public final Map<Long, com.carpet.safesave.safesave.SafeSaveStore.ChunkSnapshot> suspendedSnapshots = new java.util.HashMap<>();
+    public boolean waiting;
+
     public final Map<String, ProtectedRegion> byName = new LinkedHashMap<>();
 
     public void addRegion(final ProtectedRegion region) {

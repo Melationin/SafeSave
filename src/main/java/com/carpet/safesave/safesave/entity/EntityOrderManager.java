@@ -42,7 +42,7 @@ public final class EntityOrderManager {
         if (newChunks == null || newChunks.isEmpty()) {
             return;
         }
-        EntityTickList list = ((ServerLevelTickListAccess) level).SS$getEntityTickList();
+        EntityTickList list = level.entityTickList;
         List<Entity> all = ((EntityTickListAccess) list).SS$snapshotActive();
 
         List<Entity> affected = new ArrayList<>();

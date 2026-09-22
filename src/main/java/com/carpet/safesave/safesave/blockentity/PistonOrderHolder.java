@@ -12,4 +12,8 @@ public interface PistonOrderHolder {
 
     /** 单调递增的创建序号；未知时为 {@link Long#MIN_VALUE}。 */
     long SS$pistonOrder();
+
+    void SS$suspendAt(long gameTime);
+
+    void SS$rebaseTime(long gameTime);
 }

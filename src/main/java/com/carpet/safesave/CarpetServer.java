@@ -23,6 +23,7 @@ public class CarpetServer implements CarpetExtension, ModInitializer {
 
     @Override
     public void onInitialize() {
+        com.carpet.safesave.safesave.region.RegionLifecycle.initialize();
         loadExtension();
     }
 
