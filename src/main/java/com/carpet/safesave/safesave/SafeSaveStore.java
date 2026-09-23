@@ -3,9 +3,12 @@ package com.carpet.safesave.safesave;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
 import com.carpet.safesave.safesave.scheduled.SafeTick;
+import it.unimi.dsi.fastutil.longs.Long2ByteMap;
+import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.LongArrayTag;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -15,7 +18,7 @@ import java.util.Map;
 
 public final class SafeSaveStore {
 
-    public static final int FORMAT_VERSION = 5;
+    public static final int FORMAT_VERSION = 6;
 
     private static final String KEY_VERSION = "version";
     private static final String KEY_LEVELS = "levels";
@@ -24,7 +27,8 @@ public final class SafeSaveStore {
     private static final String KEY_DEBUG_GAME_TIME = "gameTime";
     private static final String KEY_DIMENSION = "dimension";
     private static final String KEY_SUB_TICK_COUNT = "subTickCount";
-    private static final String KEY_REGIONS = "regions";
+    private static final String KEY_ENTITY_TICKING_CHUNKS = "entity_ticking_chunks";
+    private static final String KEY_BLOCK_TICKING_CHUNKS = "block_ticking_chunks";
 
     private static final String KEY_BLOCK_TICKS = "block";
     private static final String KEY_FLUID_TICKS = "fluid";
@@ -56,7 +60,7 @@ public final class SafeSaveStore {
     public static final class DimensionData {
         public long subTickCount = -1L; //保存时的subTickCount，-1异常值
         public long gameTime = Long.MIN_VALUE;
-        public ListTag regions;
+        public Long2ByteOpenHashMap tickingChunks = new Long2ByteOpenHashMap();
     }
 
     private final Map<String, DimensionData> dimensions = new LinkedHashMap<>();
@@ -148,9 +152,14 @@ public final class SafeSaveStore {
             // 仅调试用
             levelTag.putLong(KEY_DEBUG_GAME_TIME, data.gameTime);
         }
-        if (data.regions != null && !data.regions.isEmpty()) {
-            levelTag.put(KEY_REGIONS, data.regions);
+        List<Long> entityChunks = new ArrayList<>();
+        List<Long> blockChunks = new ArrayList<>();
+        for (Long2ByteMap.Entry entry : data.tickingChunks.long2ByteEntrySet()) {
+            if (entry.getByteValue() == 31) entityChunks.add(entry.getLongKey());
+            else if (entry.getByteValue() == 32) blockChunks.add(entry.getLongKey());
         }
+        levelTag.put(KEY_ENTITY_TICKING_CHUNKS, new LongArrayTag(entityChunks.stream().mapToLong(Long::longValue).sorted().toArray()));
+        levelTag.put(KEY_BLOCK_TICKING_CHUNKS, new LongArrayTag(blockChunks.stream().mapToLong(Long::longValue).sorted().toArray()));
 
         ListTag levels = new ListTag();
         levels.add(levelTag);
@@ -162,7 +171,7 @@ public final class SafeSaveStore {
     public static SafeSaveStore load(final CompoundTag root) {
         SafeSaveStore store = new SafeSaveStore();
         int version = root.getIntOr(KEY_VERSION, 0);
-        if (version != FORMAT_VERSION) {
+        if (version != FORMAT_VERSION && version != 5) {
 
             throw new IllegalStateException("unsupported safe-save format version " + version
                     + " (expected " + FORMAT_VERSION + ")");
@@ -181,8 +190,14 @@ public final class SafeSaveStore {
                 DimensionData data = store.dimension(dimensionId);
                 data.subTickCount = levelTag.getLongOr(KEY_SUB_TICK_COUNT, -1L);
                 data.gameTime = levelTag.getLongOr(KEY_DEBUG_GAME_TIME, Long.MIN_VALUE);
-                ListTag regions = levelTag.getListOrEmpty(KEY_REGIONS);
-                data.regions = regions.isEmpty() ? null : regions;
+                if (version >= 6) {
+                    for (long key : levelTag.getLongArray(KEY_ENTITY_TICKING_CHUNKS).orElseGet(() -> new long[0])) {
+                        data.tickingChunks.put(key, (byte)31);
+                    }
+                    for (long key : levelTag.getLongArray(KEY_BLOCK_TICKING_CHUNKS).orElseGet(() -> new long[0])) {
+                        data.tickingChunks.putIfAbsent(key, (byte)32);
+                    }
+                }
             });
         }
         return store;

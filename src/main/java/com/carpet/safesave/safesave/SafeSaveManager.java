@@ -3,8 +3,6 @@ package com.carpet.safesave.safesave;
 import static com.carpet.safesave.util.SafeSaveNbt.KEY_SAFE_SAVE;
 import static com.carpet.safesave.util.Util.dimensionId;
 
-import carpet.patches.EntityPlayerMPFake;
-import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.rules.SafeSaveRules;
 import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
 import com.carpet.safesave.safesave.chunk.ChunkNbtBridge;
@@ -12,13 +10,9 @@ import com.carpet.safesave.safesave.chunk.ChunkRebuildCoordinator;
 import com.carpet.safesave.safesave.chunk.ChunkSnapshotManager;
 import com.carpet.safesave.safesave.blockentity.PistonManager;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
-import com.carpet.safesave.safesave.region.ProtectedRegionCodec;
-import com.carpet.safesave.safesave.region.ProtectedRegionManager;
-import com.carpet.safesave.safesave.region.RegionLifecycle;
+import com.carpet.safesave.safesave.startup.StartupChunkRecovery;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
-import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -38,14 +32,12 @@ public final class SafeSaveManager {
     }
 
     public static boolean shouldRun() {
-        return SafeSaveRules.safeSave || SafeSaveRules.safeSaveRegions;
+        return SafeSaveRules.safeSave;
     }
 
     private static boolean capturesChunk(ServerLevel level, long key) {
         SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-        return enabled() || RegionLifecycle.isProtected(level, key)
-                || state.pendingChunks.containsKey(key)
-                || state.protectedRegions.suspendedAt.contains(key);
+        return enabled() || state.pendingChunks.containsKey(key);
     }
 
     public static SafeSaveStore store() {
@@ -78,10 +70,6 @@ public final class SafeSaveManager {
             SafeSaveStore.DimensionData data = session.store.dimensionOrNull(dimensionId(level));
             if (data != null) {
                 ScheduledTickManager.restoreSubTickCount(level, data);
-                if (data.regions != null && !data.regions.isEmpty()) {
-                    SafeSaveLevelAccess.of(level).protectedRegions.byName.putAll(
-                            ProtectedRegionCodec.load(data.regions));
-                }
             }
         }
     }
@@ -94,134 +82,19 @@ public final class SafeSaveManager {
         }
         if (session.freezeArmed) {
             session.freezeArmed = false;
-            armStartupFreeze(server, session);
+            StartupChunkRecovery.arm(server, session);
         }
-        updateStartupRegionBarrier(server, session);
+        StartupChunkRecovery.update(server, session);
     }
 
-    private static void armStartupFreeze(final MinecraftServer server, final SafeSaveSession session) {
-        String mode = SafeSaveRules.safeSaveUnfreeze;
-        if ("region".equals(mode)) {
-            if (!SafeSaveRules.safeSaveRegions) {
-                DebugLog.info("safeSave unfreeze mode = region, but safeSaveRegions is off; "
-                        + "the server will not be frozen on startup.");
-                return;
-            }
-            ProtectedRegionManager.StartupStatus status = ProtectedRegionManager.startupStatus(server);
-            if (status.required() == 0) {
-                DebugLog.info("safeSave unfreeze mode = region; no fully loaded region was recorded at the last save, "
-                        + "so startup will not be frozen.");
-                return;
-            }
-            server.tickRateManager().setFrozen(true);
-            session.startupRegionBarrierActive = true;
-            // 超时自第一个玩家进服起算（startupRegionBarrierStartedAt 保持 -1），见 barrierElapsedTicks。
-            session.startupRegionBarrierLastLogAt = 0;
-            DebugLog.info("froze the server at serverTick={}, gameTime={}; waiting for {} region(s) recorded at "
-                            + "the last save ({} already loaded, missing={}), timeout={} server tick(s) "
-                            + "counted from the first player join",
-                    server.getTickCount(), server.overworld().getGameTime(),
-                    status.required(), status.loaded(), status.missingDescription(),
-                    Math.max(SafeSaveRules.safeSaveRegionTimeout, 0));
-            broadcastStartupFrozen(server, session);
-            return;
-        }
-        if (!enabled()) {
-            return;
-        }
-        if ("manual".equals(mode)) {
-            server.tickRateManager().setFrozen(true);
-            DebugLog.info("froze the server before its first tick. "
-                    + "Run '/tick unfreeze' once you are happy with the restored state.");
-        } else if ("no_freeze".equals(mode)) {
-            DebugLog.info("safeSave unfreeze mode = no_freeze; the server will not be frozen on startup.");
-        }
-    }
-
-    private static int barrierElapsedTicks(final MinecraftServer server, final SafeSaveSession session) {
-        if (session.startupRegionBarrierStartedAt < 0) {
-            if (server.getPlayerList().getPlayers().isEmpty()) {
-                return 0;
-            }
-            session.startupRegionBarrierStartedAt = server.getTickCount();
-            session.startupRegionBarrierLastLogAt = 0;
-        }
-        return Math.max(server.getTickCount() - session.startupRegionBarrierStartedAt, 0);
-    }
-
-    private static void updateStartupRegionBarrier(final MinecraftServer server,
-                                                   final SafeSaveSession session) {
-        if (!session.startupRegionBarrierActive) {
-            return;
-        }
-        if (!server.tickRateManager().isFrozen()) {
-            session.startupRegionBarrierActive = false;
-            DebugLog.warn("startup region wait was cancelled because the server was manually unfrozen");
-            broadcast(server, Component.translatable("safesave.message.startup_unfrozen.manual")
-                    .withStyle(ChatFormatting.GREEN));
-            return;
-        }
-        int elapsed = barrierElapsedTicks(server, session);
-        ProtectedRegionManager.StartupStatus status = ProtectedRegionManager.startupStatus(server);
-        if (status.complete()) {
-            session.startupRegionBarrierActive = false;
-            server.tickRateManager().setFrozen(false);
-            DebugLog.info("all {} startup region(s) are fully loaded; automatically unfroze at serverTick={}, "
-                            + "gameTime={} after {} tick(s)",
-                    status.required(), server.getTickCount(), server.overworld().getGameTime(), elapsed);
-            broadcast(server, Component.translatable("safesave.message.startup_unfrozen.complete")
-                    .withStyle(ChatFormatting.GREEN));
-            return;
-        }
-        int timeout = Math.max(SafeSaveRules.safeSaveRegionTimeout, 0);
-        if (elapsed >= timeout) {
-            session.startupRegionBarrierActive = false;
-            server.tickRateManager().setFrozen(false);
-            DebugLog.warn("startup region wait timed out at serverTick={}, gameTime={} after {} tick(s); "
-                            + "automatically unfroze with {}/{} region(s) loaded, missing={}",
-                    server.getTickCount(), server.overworld().getGameTime(), elapsed,
-                    status.loaded(), status.required(),
-                    status.missingDescription());
-            broadcast(server, Component.translatable("safesave.message.startup_unfrozen.timeout",
-                            status.loaded(), status.required())
-                    .withStyle(ChatFormatting.YELLOW));
-            return;
-        }
-        if (elapsed - session.startupRegionBarrierLastLogAt >= 20) {
-            session.startupRegionBarrierLastLogAt = elapsed;
-            DebugLog.info("startup region wait: {}/{} loaded after {} server tick(s), missing={}",
-                    status.loaded(), status.required(), elapsed, status.missingDescription());
-        }
+    public static void onServerTickChildrenStart() {
+        SafeSaveSession session = SafeSaveSession.current();
+        if (session != null) session.serverTickRunning = true;
     }
 
     public static void onPlayerJoined(final ServerPlayer player) {
         SafeSaveSession session = SafeSaveSession.current();
-        MinecraftServer server = player.level().getServer();
-        if (session == null || server == null || !session.startupRegionBarrierActive
-                || !server.tickRateManager().isFrozen() || player instanceof EntityPlayerMPFake) {
-            return;
-        }
-        player.sendSystemMessage(startupFrozenMessage(server, session));
-    }
-
-    private static void broadcastStartupFrozen(final MinecraftServer server,
-                                               final SafeSaveSession session) {
-        broadcast(server, startupFrozenMessage(server, session));
-    }
-
-    private static Component startupFrozenMessage(final MinecraftServer server,
-                                                  final SafeSaveSession session) {
-        int elapsed = barrierElapsedTicks(server, session);
-        int remainingTicks = Math.max(Math.max(SafeSaveRules.safeSaveRegionTimeout, 0) - elapsed, 0);
-        int remainingSeconds = (remainingTicks + 19) / 20;
-        return Component.translatable("safesave.message.startup_frozen", remainingTicks, remainingSeconds)
-                .withStyle(ChatFormatting.YELLOW);
-    }
-
-    private static void broadcast(final MinecraftServer server, final Component message) {
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            player.sendSystemMessage(message);
-        }
+        if (session != null) StartupChunkRecovery.onPlayerJoined(player, session);
     }
 
     // -----------------------------------------------------------------------
@@ -268,7 +141,8 @@ public final class SafeSaveManager {
     // -----------------------------------------------------------------------
 
     public static void onLevelTickStart(final ServerLevel level) {
-        RegionLifecycle.beforeTick(level);
+        SafeSaveSession startupSession = SafeSaveSession.current();
+        if (startupSession != null) StartupChunkRecovery.enforceFreeze(level, startupSession);
         if (!shouldRun() && SafeSaveLevelAccess.of(level).pendingChunks.isEmpty()) {
             return;
         }
@@ -296,17 +170,43 @@ public final class SafeSaveManager {
         return !state.worldTickRunning && state.completedWorldTick == level.getServer().getTickCount();
     }
 
+    public static boolean isTickEndPending(MinecraftServer server) {
+        SafeSaveSession session = SafeSaveSession.current();
+        return session != null && session.serverTickRunning
+                && session.finalizedServerTick != server.getTickCount();
+    }
+
+    public static boolean shouldDeferChunkMapSave(ServerLevel level) {
+        SafeSaveSession session = SafeSaveSession.current();
+        return shouldRun() && session != null && !session.freezeArmed
+                && !level.getServer().isStopped()
+                && (isTickEndPending(level.getServer()) || !canCaptureSnapshot(level));
+    }
+
     public static void onServerTickEnd(final MinecraftServer server, final BooleanSupplier haveTime) {
         SafeSaveSession session = SafeSaveSession.current();
         for (ServerLevel level : server.getAllLevels()) {
             if (shouldRun() && session != null && session.store != null) {
-                ChunkSnapshotManager.captureAtServerTickEnd(level, SafeSaveLevelAccess.of(level), enabled());
+                ChunkSnapshotManager.captureAtServerTickEnd(level, SafeSaveLevelAccess.of(level));
+                StartupChunkRecovery.captureTickEnd(level, session);
             }
-            RegionLifecycle.afterServerTick(level);
         }
-        if (session != null && session.deferredSaveAll) {
-            session.deferredSaveAll = false;
-            SafeSaveFiles.saveAll(server, session);
+        if (session != null) {
+            session.finalizedServerTick = server.getTickCount();
+            session.serverTickRunning = false;
+            if (session.deferredSaveEverything) {
+                boolean silent = session.deferredSilent;
+                boolean flush = session.deferredFlush;
+                boolean force = session.deferredForce;
+                clearDeferredServerSave(session);
+                server.saveEverything(silent, flush, force);
+            } else if (session.deferredSaveAllChunks) {
+                boolean silent = session.deferredSilent;
+                boolean flush = session.deferredFlush;
+                boolean force = session.deferredForce;
+                clearDeferredServerSave(session);
+                server.saveAllChunks(silent, flush, force);
+            }
         }
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
@@ -323,6 +223,45 @@ public final class SafeSaveManager {
         }
     }
 
+    private static void clearDeferredServerSave(SafeSaveSession session) {
+        session.deferredSaveEverything = false;
+        session.deferredSaveAllChunks = false;
+        session.deferredSilent = true;
+        session.deferredFlush = false;
+        session.deferredForce = false;
+    }
+
+    public static boolean deferSaveEverything(MinecraftServer server,
+                                              boolean silent, boolean flush, boolean force) {
+        SafeSaveSession session = SafeSaveSession.current();
+        if (!needsTickEndSave(server, session)) return false;
+        session.deferredSaveEverything = true;
+        rememberSaveFlags(session, silent, flush, force);
+        return true;
+    }
+
+    public static boolean deferSaveAllChunks(MinecraftServer server,
+                                             boolean silent, boolean flush, boolean force) {
+        SafeSaveSession session = SafeSaveSession.current();
+        if (!needsTickEndSave(server, session)) return false;
+        session.deferredSaveAllChunks = true;
+        rememberSaveFlags(session, silent, flush, force);
+        return true;
+    }
+
+    private static boolean needsTickEndSave(MinecraftServer server, SafeSaveSession session) {
+        if (!shouldRun() || session == null || session.store == null
+                || session.freezeArmed || server.isStopped()) return false;
+        return isTickEndPending(server);
+    }
+
+    private static void rememberSaveFlags(SafeSaveSession session,
+                                          boolean silent, boolean flush, boolean force) {
+        session.deferredSilent &= silent;
+        session.deferredFlush |= flush;
+        session.deferredForce |= force;
+    }
+
     /*
       在 MinecraftServer.saveAllChunks 的 HEAD 处调用（自动保存、save-all、
      关闭时的最终保存），也在 Carpet 的 onServerClosed}（{stopServer} 的 HEAD）
@@ -336,12 +275,6 @@ public final class SafeSaveManager {
         SafeSaveSession session = SafeSaveSession.current();
         if (session == null || session.store == null || session.freezeArmed) {
             return;
-        }
-        for (ServerLevel level : server.getAllLevels()) {
-            if (!canCaptureSnapshot(level)) {
-                session.deferredSaveAll = true;
-                return;
-            }
         }
         SafeSaveFiles.saveAll(server, session);
     }

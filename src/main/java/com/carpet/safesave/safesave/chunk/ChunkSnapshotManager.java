@@ -5,7 +5,6 @@ import com.carpet.safesave.safesave.SafeSaveManager;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
-import com.carpet.safesave.safesave.region.RegionLifecycle;
 import com.carpet.safesave.safesave.scheduled.SafeTickContainer;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import com.carpet.safesave.safesave.scheduled.TickContainers;
@@ -21,12 +20,10 @@ import java.util.Map;
 public final class ChunkSnapshotManager {
     private ChunkSnapshotManager() {}
 
-    public static void captureAtServerTickEnd(ServerLevel level, SafeSaveLevelState state,
-                                              boolean allChunks) {
+    public static void captureAtServerTickEnd(ServerLevel level, SafeSaveLevelState state) {
         Map<Long, List<SafeBlockEvent>> events = BlockEventManager.snapshotByChunk(level, state);
         for (long key : TickContainers.collectReadyChunks(level)) {
-            if (!allChunks && !RegionLifecycle.isProtected(level, key)) continue;
-            if (state.pendingChunks.containsKey(key) || state.protectedRegions.suspendedAt.contains(key)) continue;
+            if (state.pendingChunks.containsKey(key)) continue;
             ChunkPos pos = ChunkPos.unpack(key);
             LevelChunk chunk = level.getChunkSource().getChunkNow(pos.x(), pos.z());
             if (chunk == null) {
@@ -38,22 +35,15 @@ public final class ChunkSnapshotManager {
         }
     }
 
-    /** Frozen state lives on the chunk while loaded, and in pendingChunks after NBT reload. */
-    public static SafeSaveStore.ChunkSnapshot storedSnapshot(long key, LevelChunk chunk,
-                                                              SafeSaveLevelState state) {
-        if (chunk != null) {
-            SafeSaveStore.ChunkSnapshot snapshot = ((ChunkSnapshotHolder) chunk).SS$lastSnapshot();
-            if (snapshot != null) return snapshot;
-        }
-        return state.pendingChunks.get(key);
-    }
-
     public static SafeSaveStore.ChunkSnapshot forSave(ServerLevel level, LevelChunk chunk,
                                                       SafeSaveLevelState state) {
         long key = chunk.getPos().pack();
-        if (state.protectedRegions.suspendedAt.contains(key)) return storedSnapshot(key, chunk, state);
         SafeSaveStore.ChunkSnapshot pending = state.pendingChunks.get(key);
         if (pending != null) return pending;
+        // An exception inside ServerLevel.tick has no completed snapshot for this server tick.
+        // Shutdown must drain vanilla writes, but an older custom snapshot would describe a
+        // different block/tick state. Let vanilla serialize the live queues in that case.
+        if (level.getServer().isStopped() && !SafeSaveManager.canCaptureSnapshot(level)) return null;
         ChunkSnapshotHolder holder = (ChunkSnapshotHolder) chunk;
         if (sameTick(level, holder)) return holder.SS$lastSnapshot();
         if (!SafeSaveManager.canCaptureSnapshot(level)) return holder.SS$lastSnapshot();
@@ -65,7 +55,7 @@ public final class ChunkSnapshotManager {
                                                        SafeSaveLevelState state,
                                                        List<SafeBlockEvent> events, boolean atTickEnd) {
         long key = chunk.getPos().pack();
-        if (state.pendingChunks.containsKey(key) || state.protectedRegions.suspendedAt.contains(key)) return null;
+        if (state.pendingChunks.containsKey(key)) return null;
         ChunkSnapshotHolder holder = (ChunkSnapshotHolder) chunk;
         long gameTime = level.getGameTime();
         int serverTick = level.getServer().getTickCount();

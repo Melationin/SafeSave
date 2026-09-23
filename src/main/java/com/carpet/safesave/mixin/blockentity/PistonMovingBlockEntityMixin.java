@@ -38,11 +38,6 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
     private long SS$snapshotTime = Long.MIN_VALUE;
 
     @Override
-    public void SS$suspendAt(long gameTime) {
-        if (this.SS$snapshotTime == Long.MIN_VALUE) this.SS$snapshotTime = gameTime;
-    }
-
-    @Override
     public void SS$rebaseTime(long gameTime) {
         if (this.SS$snapshotTime != Long.MIN_VALUE) {
             this.lastTicked = com.carpet.safesave.util.ResumeTime.rebase(

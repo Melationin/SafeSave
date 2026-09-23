@@ -13,13 +13,18 @@ public final class SafeSaveSession {
     public SafeSaveStore store;
 
     public boolean freezeArmed = true;//在首刻前冻结被处理之前为true
-    public boolean startupRegionBarrierActive;
-    public boolean deferredSaveAll;
-
-    /** 首个玩家进服时的 tickCount；-1 = 未进服，超时不计时。 */
-    public int startupRegionBarrierStartedAt = -1;
-
-    public int startupRegionBarrierLastLogAt = -1;
+    public boolean startupRecoveryWaiting;
+    public boolean startupTicketsHeld;
+    public int firstRealPlayerTick = -1;
+    public int unfreezeTick = -1;
+    public int startupLastLogTick = -1;
+    public int finalizedServerTick = Integer.MIN_VALUE;
+    public boolean serverTickRunning;
+    public boolean deferredSaveEverything;
+    public boolean deferredSaveAllChunks;
+    public boolean deferredSilent = true;
+    public boolean deferredFlush;
+    public boolean deferredForce;
 
     public final AtomicInteger loadedTickCount = new AtomicInteger();
     public final AtomicInteger loadedBlockEventCount = new AtomicInteger();

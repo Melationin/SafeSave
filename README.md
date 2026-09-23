@@ -1,43 +1,16 @@
 # SafeSave
 
-通过额外保存更多的数据，并且在加载时恢复，以达到避免部分因为关服/回档而导致机器损坏的情况
+SafeSave 是一个 Carpet 扩展，用于在 Minecraft 26.1 重载世界时恢复计划刻、方块事件、移动活塞和实体的顺序状态。
 
-会对一下数据做额外保存
+启用 `safeSave` 后，每个完整服务器刻末会给已加载区块采集快照。区块保存时，快照写入区块 NBT 的 `safeSave` 子节点。每个维度的 `data/safesave.dat` 记录 `Level.subTickCount` 和本刻模拟等级不大于 32 的区块；等级不大于 31 的目标按实体刻等级 31 恢复加载票，等级 32 的目标按方块刻等级 32 恢复。
 
-- **计划刻无损重启**：额外保存随机刻时间 `triggerTick` 与 随机刻执行顺序`subTickOrder` ，防止原版用 `delay` 重新锚定、按区块重编号。
-- **方块事件持久化**：持久化保存方块事件
-- **移动活塞修复**：修复活塞半程重载（progress）、`lastTicked`、方块实体 tick 顺序、跨区块推拉恢复等问题
-- **实体tick顺序重建**: 额外保存实体的tick顺序，用于重建。
-- **ProtectedRegion 启动屏障**：启动时全局冻结，等待上次保存时完整加载的区域再次加载后自动解冻
+再次启动时，如果旁置文件有这些区块，服务器会先冻结游戏刻，给它们添加仅负责加载的票，等待全部区块及其计划刻容器就绪后自动解冻。等级 31 的目标还要等待实体加载就绪。强制解冻超时从首位真人玩家加入开始计算；假玩家不触发计时。票保留时长可从该玩家加入或解冻时开始计算。
 
+| Carpet 规则 | 默认值 | 用途 |
+|---|---:|---|
+| `safeSave` | `false` | 启用保存与启动恢复 |
+| `safeSaveTicketDuration` | `600` | 启动加载票保留的服务器刻数 |
+| `safeSaveForceUnfreezeTimeout` | `6000` | 首位真人玩家加入后的强制解冻刻数 |
+| `safeSaveTicketTimerFromFirstPlayer` | `true` | 从首位真人玩家加入计票时；`false` 则从解冻计时 |
 
-## 规则
-
-| 规则 | 默认 | 说明                                                           |
-|---|---|--------------------------------------------------------------|
-| `safeSave` | `false` | 计划刻 / 方块事件持久化总开关                                             |
-| `safeSaveRegions` | `false` | ProtectedRegion 启动屏障总开关                                      |
-| `safeSaveUnfreeze` | `manual` | 启动冻结策略：`no_freeze` 不冻结 / `manual` 冻结后手动解冻 / `region` 等区域自动解冻 |
-| `safeSaveRegionTimeout` | `600` | `region` 模式最大等待（服务器刻，**自首个真人玩家进服起算**）                        |
-
-## 命令
-
-`/safesave region ...` 管理ProtectedRegion
-
-| 命令 | 说明 |
-|---|---|
-| `region add <name> <from> <to>` | 定义矩形区域：两个角点区块坐标，名称唯一；空区域会被拒绝 |
-| `region remove <name>` | 删除区域 |
-| `region addChunk <name> <pos>` | 向区域追加一个区块 |
-| `region removeChunk <name> <pos>` | 从区域移除一个区块 |
-| `region list` | 列出全部区域及区块数（上次保存时完整加载的区域带 `[startup target]` 标记） |
-| `region info <name>` | 显示区域详情：区块数、当前是否完整加载（`fullyLoadedNow`）、启动目标标记（`startupTarget`） |
-
-
-## 数据存储
-
-- **区块 NBT 的 `safeSave` 子节点**：每区块的计划刻（绝对触发时刻 + 全局序号）与方块事件
-- **每维度旁置文件 `<维度>/data/safesave.dat`**：`Level.subTickCount`、ProtectedRegion 定义与"上次保存时完整加载"标记
-
-
-
+自动保存发生在服务器刻末。刻内手动保存和原版刻内区块卸载保存会延后到本刻快照生成后。正常停服时，原版会先卸载全部区块再最终保存；SafeSave 在卸载前写入最后一个完整服务器刻的目标清单，最终 flush 沿用该清单。

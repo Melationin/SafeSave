@@ -1,17 +1,12 @@
 {
-  "carpet.category.example": "Example",
-  "carpet.rule.exampleFeature.name": "Example Feature",
-  "carpet.rule.exampleFeature.desc": "A simple example Carpet rule.",
   "carpet.rule.safeSave.name": "Safe Save",
-  "carpet.rule.safeSave.desc": "Persist scheduled ticks and block events losslessly across a restart. Absolute triggerTick, global subTickOrder, Level.subTickCount and the ordered block-event queue are stored in <world>/safesave.dat. The server freezes before its first tick so the restored state can be inspected; run '/tick unfreeze' to resume.",
-  "carpet.rule.safeSaveRegions.name": "SafeSave Protected Regions",
-  "carpet.rule.safeSaveRegions.desc": "Record fully loaded ProtectedRegions when saving; region mode globally freezes startup until those regions are fully loaded again.",
-  "carpet.rule.safeSaveUnfreeze.name": "SafeSave Unfreeze Mode",
-  "carpet.rule.safeSaveUnfreeze.desc": "Startup freeze strategy: no_freeze, manual (/tick unfreeze), or region (automatically unfreeze after saved ProtectedRegions load).",
-  "carpet.rule.safeSaveRegionTimeout.name": "Protected Region Startup Timeout",
-  "carpet.rule.safeSaveRegionTimeout.desc": "Maximum server ticks to wait for saved ProtectedRegions in region mode; 0 releases immediately.",
-  "safesave.message.startup_frozen": "[SafeSave] Waiting for the regions that were fully loaded at the last save. Game ticks are temporarily frozen and will automatically resume in at most %s server ticks (about %s seconds).",
-  "safesave.message.startup_unfrozen.complete": "[SafeSave] All required regions are fully loaded; game ticks have resumed automatically.",
-  "safesave.message.startup_unfrozen.timeout": "[SafeSave] The region loading wait timed out; game ticks have resumed automatically (%s/%s regions loaded).",
-  "safesave.message.startup_unfrozen.manual": "[SafeSave] The startup region wait was cancelled manually; game ticks have resumed."
+  "carpet.rule.safeSave.desc": "Save scheduled ticks and block events at the end of each complete server tick. Record level-31/32 chunks and load them before automatically resuming simulation on restart.",
+  "carpet.rule.safeSaveTicketDuration.name": "Startup ticket duration",
+  "carpet.rule.safeSaveTicketDuration.desc": "Server ticks to retain startup loading tickets; default 600.",
+  "carpet.rule.safeSaveForceUnfreezeTimeout.name": "Forced unfreeze timeout",
+  "carpet.rule.safeSaveForceUnfreezeTimeout.desc": "Maximum server ticks to wait for chunk loading after the first real player joins; default 6000.",
+  "carpet.rule.safeSaveTicketTimerFromFirstPlayer.name": "Start ticket timer on first player",
+  "carpet.rule.safeSaveTicketTimerFromFirstPlayer.desc": "When enabled, count ticket duration from the first real player joining; otherwise count from unfreeze.",
+  "safesave.message.startup_frozen": "[SafeSave] Loading chunks active at the last save. Game ticks are frozen; the wait lasts at most %s server ticks after the first real player joins.",
+  "safesave.message.startup_unfrozen": "[SafeSave] Startup loading wait ended; game ticks have resumed."
 }

@@ -11,12 +11,15 @@ public class SafeSaveRules {
     public static boolean safeSave = false;
 
 
+    /** Server ticks to retain the startup loading tickets. */
     @Rule(categories = { FEATURE})
-    public static boolean safeSaveRegions = false;
+    public static int safeSaveTicketDuration = 30 * 20;
 
-    @Rule(categories = { FEATURE}, options = {"no_freeze", "manual", "region"})
-    public static String safeSaveUnfreeze = "manual";
-
+    /** Server ticks from the first real player join to forced unfreeze. */
     @Rule(categories = { FEATURE})
-    public static int safeSaveRegionTimeout = 600;
+    public static int safeSaveForceUnfreezeTimeout = 300 * 20;
+
+    /** Otherwise the ticket duration begins when the server unfreezes. */
+    @Rule(categories = { FEATURE})
+    public static boolean safeSaveTicketTimerFromFirstPlayer = true;
 }

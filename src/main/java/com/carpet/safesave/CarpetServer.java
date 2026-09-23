@@ -3,10 +3,7 @@ package com.carpet.safesave;
 import carpet.CarpetExtension;
 import com.carpet.safesave.rules.SafeSaveRules;
 import com.carpet.safesave.safesave.SafeSaveManager;
-import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.api.ModInitializer;
-import net.minecraft.commands.CommandBuildContext;
-import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.Map;
@@ -23,7 +20,7 @@ public class CarpetServer implements CarpetExtension, ModInitializer {
 
     @Override
     public void onInitialize() {
-        com.carpet.safesave.safesave.region.RegionLifecycle.initialize();
+        com.carpet.safesave.safesave.startup.StartupChunkRecovery.initialize();
         loadExtension();
     }
 
@@ -44,12 +41,6 @@ public class CarpetServer implements CarpetExtension, ModInitializer {
         // 在 stopServer 的 HEAD 处触发，与原版 saveAllChunks HEAD 一样写世界级旁置元数据；
         // 关闭后会话刻意保留（不得 clear），因为原版之后还会保存一次（见 SafeSaveManager.saveAll）。
         SafeSaveManager.saveAll(server);
-    }
-
-    @Override
-    public void registerCommands(final CommandDispatcher<CommandSourceStack> dispatcher,
-                                 final CommandBuildContext context) {
-        SafeSaveCommands.register(dispatcher, context);
     }
 
     @Override

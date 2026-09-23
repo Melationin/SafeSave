@@ -29,11 +29,29 @@ public abstract class MinecraftServerMixin {
         SafeSaveManager.onServerTickEnd((MinecraftServer) (Object) this, haveTime);
     }
 
-    @Inject(method = "saveAllChunks", at = @At("HEAD"))
+    @Inject(method = "tickChildren", at = @At("HEAD"))
+    private void SS$onServerTickChildrenStart(final BooleanSupplier haveTime, final CallbackInfo ci) {
+        SafeSaveManager.onServerTickChildrenStart();
+    }
+
+    @Inject(method = "saveEverything", at = @At("HEAD"), cancellable = true)
+    private void SS$deferSaveEverything(final boolean silent, final boolean flush,
+                                       final boolean force, final CallbackInfoReturnable<Boolean> cir) {
+        if (SafeSaveManager.deferSaveEverything((MinecraftServer) (Object) this, silent, flush, force)) {
+            cir.setReturnValue(true);
+        }
+    }
+
+    @Inject(method = "saveAllChunks", at = @At("HEAD"), cancellable = true)
     private void SS$onSaveAllChunks(final boolean silent,
                                                final boolean flush,
                                                final boolean force,
                                                final CallbackInfoReturnable<Boolean> cir) {
-        SafeSaveManager.saveAll((MinecraftServer) (Object) this);
+        MinecraftServer server = (MinecraftServer) (Object) this;
+        if (SafeSaveManager.deferSaveAllChunks(server, silent, flush, force)) {
+            cir.setReturnValue(true);
+            return;
+        }
+        SafeSaveManager.saveAll(server);
     }
 }

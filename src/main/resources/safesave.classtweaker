@@ -11,6 +11,8 @@ accessible method net/minecraft/server/level/ServerChunkCache runDistanceManager
 accessible field net/minecraft/server/level/ChunkMap visibleChunkMap Lit/unimi/dsi/fastutil/longs/Long2ObjectLinkedOpenHashMap;
 accessible method net/minecraft/server/level/ChunkMap processUnloads (Ljava/util/function/BooleanSupplier;)V
 accessible method net/minecraft/server/level/ChunkMap saveAllChunks (Z)V
+accessible field net/minecraft/server/level/DistanceManager simulationChunkTracker Lnet/minecraft/server/level/SimulationChunkTracker;
+accessible field net/minecraft/server/level/SimulationChunkTracker chunks Lit/unimi/dsi/fastutil/longs/Long2ByteMap;
 accessible method net/minecraft/world/level/storage/TagValueOutput <init> (Lnet/minecraft/util/ProblemReporter;Lcom/mojang/serialization/DynamicOps;Lnet/minecraft/nbt/CompoundTag;)V
 
 inject-interface net/minecraft/world/level/storage/TagValueOutput com/carpet/safesave/util/ValueOutputAccess

@@ -2,8 +2,7 @@ package com.carpet.safesave.safesave;
 
 
 import com.carpet.safesave.debug.DebugLog;
-import com.carpet.safesave.safesave.region.ProtectedRegionCodec;
-import com.carpet.safesave.safesave.region.ProtectedRegionManager;
+import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
@@ -90,27 +89,24 @@ public final class SafeSaveFiles {
      * <p>首刻之前（{@code session.freezeArmed} 仍为 true）的保存——如
      * {@code IntegratedServer.initServer} / {@code DedicatedServer.initServer} 里的
      * {@code saveEverything(false, true, true)}——直接跳过：世界尚未开始 tick，旁置元数据没有
-     * 新内容，且 Region 可能尚未从文件恢复，写盘只会清空 regions 或把启动目标重算为 false。
-     * 服务器关闭流程（{@code server.isStopped()} 为 true）中则跳过 {@code requiredAtStartup}
-     * 重算：关闭时原版先排干卸载全部区块，此刻"完整加载"判据必然失败，重算会把上次正常保存
-     * 捕获的启动目标全部抹掉；关闭应保留上次正常保存时的标记。
+     * 新内容。模拟等级清单来自上一个完整服务器刻的内存快照：关闭时原版会先卸载全部区块，
+     * 因此绝不能在最终 flush 时扫描当时已空的区块表。
      */
     public static void saveAll(final MinecraftServer server, final SafeSaveSession session) {
         if (session == null || session.store == null || session.freezeArmed) {
             return;
         }
         session.store.setServerTickCount(server.getTickCount()); // 仅调试用
-        int startupRegionTargets = 0;
+        int startupChunkTargets = 0;
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-            startupRegionTargets += ProtectedRegionManager.captureSaveState(level, state, !server.isStopped());
             SafeSaveStore.DimensionData data = session.store.dimension(dimensionId(level));
             data.subTickCount = level.subTickCount;
             data.gameTime = level.getGameTime(); // 仅调试用
-            data.regions = ProtectedRegionCodec.save(state.protectedRegions.byName);
-            if (data.regions.isEmpty()) {
-                data.regions = null;
+            if (state.tickingSnapshotAvailable) {
+                data.tickingChunks = new Long2ByteOpenHashMap(state.tickingChunksAtTickEnd);
             }
+            startupChunkTargets += data.tickingChunks.size();
             Path file = dimensionDataDir(level).resolve(FILE_NAME);
             write(file, session.store.saveDimension(dimensionId(level), data));
         }
@@ -121,8 +117,8 @@ public final class SafeSaveFiles {
             pending += state.pendingChunks.size();
         }
         DebugLog.info("saved safesave world metadata over {} dimension(s); {} chunk(s) still pending rebuild; "
-                        + "{} fully loaded region(s) recorded for next startup",
-                server.levelKeys().size(), pending, startupRegionTargets);
+                        + "{} ticking chunk(s) recorded for next startup",
+                server.levelKeys().size(), pending, startupChunkTargets);
     }
 
 
