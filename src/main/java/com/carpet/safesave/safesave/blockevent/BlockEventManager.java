@@ -101,9 +101,7 @@ public final class BlockEventManager {
 
     // ------------------------------------------------------------ 恢复
 
-    /*
-     把一批方块事件按全局序号排序后重新入队。
-     */
+    //把一批方块事件按全局序号排序后重新入队
     public static void restoreChunkEvents(final ServerLevel level,
                                           final List<SafeBlockEvent> saved,
                                           final SafeSaveSession session,
@@ -157,20 +155,5 @@ public final class BlockEventManager {
             // 回填既有实时事件到恢复事件之后（恢复事件更老，必须排前面）。
             queue.addAll(existing);
         }
-    }
-
-    /** 清掉区块遗留在世界级队列里的方块事件。序号表必须一起清：restoreChunkEvents 用
-     * {@code putIfAbsent} 写入保存的序号，残留的旧条目会让复活后的事件沿用过期序号。 */
-    public static int clearChunkEvents(final ServerLevel level, final long packedChunkPos,
-                                       final SafeSaveLevelState levelState) {
-        ObjectLinkedOpenHashSet<BlockEventData> queue = level.blockEvents;
-        int before = queue.size();
-        queue.removeIf(event -> ChunkPos.pack(event.pos()) == packedChunkPos);
-        int removed = before - queue.size();
-        if (removed > 0) {
-            levelState.blockEventOrders.keySet()
-                    .removeIf(event -> ChunkPos.pack(event.pos()) == packedChunkPos);
-        }
-        return removed;
     }
 }

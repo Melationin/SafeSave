@@ -5,7 +5,6 @@ import java.util.List;
 
 public interface SafeTickContainer {
 
-
     boolean SS$hasPendingTicks();
 
     void SS$replaceAll(List<?> scheduledTicks);

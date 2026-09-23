@@ -35,9 +35,6 @@ public record SafeBlockEvent(String blockId, int x, int y, int z, int paramA, in
         return tag;
     }
 
-    /**
-     * @return 解析出的事件；当条目格式错误（id 缺失/为空）时为 {@code null}。
-     */
     public static SafeBlockEvent load(final CompoundTag tag) {
         String id = tag.getStringOr(KEY_ID, "");
         if (id.isEmpty()) {

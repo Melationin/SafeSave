@@ -2,10 +2,6 @@ package com.carpet.safesave.safesave.scheduled;
 
 import net.minecraft.nbt.CompoundTag;
 
-/**
- * @param triggerTick  该刻触发的绝对游戏时间
- * @param subTickOrder 原始全局 {@code Level.subTickCount} 值
- */
 public record SafeTick(String typeId, int x, int y, int z, long triggerTick, int priority, long subTickOrder) {
 
     private static final String KEY_ID = "i";

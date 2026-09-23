@@ -82,17 +82,6 @@ public final class ScheduledTickManager {
     }
 
 
-    /** 清空区块活容器里的计划刻。只能在快照已经拿到之后调用：容器若还有未解包的 pendingTicks，
-     * 其内容尚未进入任何快照，清空即永久丢弃。 */
-    public static void clearChunkTicks(final LevelChunk chunk) {
-        if (chunk.getBlockTicks() instanceof SafeTickContainer block && !block.SS$hasPendingTicks()) {
-            block.SS$replaceAll(List.of());
-        }
-        if (chunk.getFluidTicks() instanceof SafeTickContainer fluid && !fluid.SS$hasPendingTicks()) {
-            fluid.SS$replaceAll(List.of());
-        }
-    }
-
     private static void warnIfStale(final ServerLevel level, final SafeSaveSession session,
                                     final SafeSaveLevelState levelState) {
         String dimension = dimensionId(level);

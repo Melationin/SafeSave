@@ -23,7 +23,6 @@ import java.util.function.Predicate;
 @Mixin(LevelChunkTicks.class)
 public abstract class LevelChunkTicksMixin implements SafeTickContainer {
 
-    /** 原版中非 final：由 {@code unpack()} 置空。Lithium/C2ME 均保留该字段，可直接访问。 */
     @Shadow
     private List<SavedTick<?>> pendingTicks;
 

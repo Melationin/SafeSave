@@ -13,7 +13,6 @@
     "entity.FallingBlockEntityMixin",
     "entity.PrimedTntMixin",
     "scheduled.LevelChunkTicksMixin",
-    "scheduled.LevelTicksMixin",
     "util.TagValueOutputMixin",
     "chunk.SerializableChunkDataMixin",
     "chunk.LevelChunkMixin",

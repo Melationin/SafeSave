@@ -13,6 +13,7 @@ accessible method net/minecraft/server/level/ChunkMap processUnloads (Ljava/util
 accessible method net/minecraft/server/level/ChunkMap saveAllChunks (Z)V
 accessible field net/minecraft/server/level/DistanceManager simulationChunkTracker Lnet/minecraft/server/level/SimulationChunkTracker;
 accessible field net/minecraft/server/level/SimulationChunkTracker chunks Lit/unimi/dsi/fastutil/longs/Long2ByteMap;
+accessible field net/minecraft/world/ticks/LevelTicks allContainers Lit/unimi/dsi/fastutil/longs/Long2ObjectMap;
 accessible method net/minecraft/world/level/storage/TagValueOutput <init> (Lnet/minecraft/util/ProblemReporter;Lcom/mojang/serialization/DynamicOps;Lnet/minecraft/nbt/CompoundTag;)V
 
 inject-interface net/minecraft/world/level/storage/TagValueOutput com/carpet/safesave/util/ValueOutputAccess
