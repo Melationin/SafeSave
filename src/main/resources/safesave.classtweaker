@@ -6,7 +6,6 @@ accessible field net/minecraft/world/level/storage/TagValueOutput output Lnet/mi
 accessible field net/minecraft/server/level/ServerLevel blockEvents Lit/unimi/dsi/fastutil/objects/ObjectLinkedOpenHashSet;
 accessible field net/minecraft/server/level/ServerLevel entityTickList Lnet/minecraft/world/level/entity/EntityTickList;
 accessible field net/minecraft/server/level/ServerChunkCache ticketStorage Lnet/minecraft/world/level/TicketStorage;
-accessible field net/minecraft/world/level/TicketStorage tickets Lit/unimi/dsi/fastutil/longs/Long2ObjectOpenHashMap;
 accessible method net/minecraft/server/level/ServerChunkCache runDistanceManagerUpdates ()Z
 accessible field net/minecraft/server/level/ChunkMap visibleChunkMap Lit/unimi/dsi/fastutil/longs/Long2ObjectLinkedOpenHashMap;
 accessible method net/minecraft/server/level/ChunkMap processUnloads (Ljava/util/function/BooleanSupplier;)V

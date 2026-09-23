@@ -13,11 +13,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
 
-/**
- * 兼容 Lithium 等模组对 {@code LevelChunkTicks} 的重写：读取走 {@code getAll} 公共 API；
- * 重建用 {@code removeIf} 清空 + {@code schedule} 重填（两者都会触发 {@code onTickAdded}，
- * 保持父级 {@code LevelTicks} 缓存一致）。原版 {@code removeIf} 只清 {@code tickQueue}、
- * 不同步 {@code (type,pos)} 去重集合，需补清 {@code ticksPerPosition}——但 Lithium 会将其
+/*
+ * 兼容 Lithium 等模组对 LevelChunkTicks 的重写：读取走 getAll 公共 API；
+ * 重建用 removeIf 清空 + schedule 重填（两者都会触发 onTickAdded，
+ * 保持父级 LevelTicks 缓存一致）。原版 removeIf 只清 tickQueue、
+ * 不同步 (type,pos) 去重集合，需补清 ticksPerPosition——但 Lithium 会将其
  * 置为 null，访问前必须判空。
  */
 @Mixin(LevelChunkTicks.class)
@@ -26,7 +26,7 @@ public abstract class LevelChunkTicksMixin implements SafeTickContainer {
     @Shadow
     private List<SavedTick<?>> pendingTicks;
 
-    /** Lithium 会将其置为 null，访问前必须判空。 */
+    // Lithium 会将其置为 null，访问前必须判空。
     @Shadow
     @Final
     private Set<ScheduledTick<?>> ticksPerPosition;

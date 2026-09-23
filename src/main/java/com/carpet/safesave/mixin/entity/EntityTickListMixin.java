@@ -36,10 +36,10 @@ public abstract class EntityTickListMixin implements EntityTickListAccess {
         this.active = rebuilt;
     }
 
-    /**
-     * {@code add} 是所有实体进入 tick 列表的唯一入口：新生成的实体在此分配序号；
+    /*
+     * add 是所有实体进入 tick 列表的唯一入口：新生成的实体在此分配序号；
      * NBT 加载的实体无需记录，其区块会在非冻结 tick 开头由
-     * {@code ChunkRebuildCoordinator.rebuildNewChunks} 统一识别并重排。
+     * ChunkRebuildCoordinator.rebuildNewChunks 统一识别并重排。
      */
     @Inject(method = "add", at = @At("HEAD"))
     private void SS$onEntityAdded(final Entity entity, final CallbackInfo ci) {

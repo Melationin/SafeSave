@@ -16,7 +16,6 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import java.util.List;
 import java.util.Map;
 
-/** Captures live tick/event state once per server tick, or on the chunk save path. */
 public final class ChunkSnapshotManager {
     private ChunkSnapshotManager() {}
 
@@ -50,7 +49,7 @@ public final class ChunkSnapshotManager {
         return capture(level, chunk, state, BlockEventManager.snapshotChunkEvents(level, key, state), false);
     }
 
-    /** Returns null until both vanilla tick containers have been unpacked. */
+    // Returns null until both vanilla tick containers have been unpacked.
     public static SafeSaveStore.ChunkSnapshot capture(ServerLevel level, LevelChunk chunk,
                                                        SafeSaveLevelState state,
                                                        List<SafeBlockEvent> events, boolean atTickEnd) {

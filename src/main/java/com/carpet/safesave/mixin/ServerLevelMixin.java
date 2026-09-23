@@ -16,13 +16,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.function.BooleanSupplier;
 
-/**
- * 维度级状态直接挂在 {@code ServerLevel} 实例上，随世界创建/丢弃天然隔离。
+/*
+ * 维度级状态直接挂在 ServerLevel 实例上，随世界创建/丢弃天然隔离。
  */
 @Mixin(ServerLevel.class)
 public abstract class ServerLevelMixin implements SafeSaveLevelAccess {
 
-    /** parse 线程经 {@link SafeSaveLevelAccess} 读取。 */
+    // parse 线程经 SafeSaveLevelAccess 读取。
     @Unique
     private final SafeSaveLevelState SS$safeSaveLevelState = new SafeSaveLevelState();
 
@@ -45,8 +45,8 @@ public abstract class ServerLevelMixin implements SafeSaveLevelAccess {
         this.SS$safeSaveLevelState.completedWorldTick = self.getServer().getTickCount();
     }
 
-    /**
-     * {@code ServerLevel.blockEvent} 的 TAIL：仅对成功入队的事件分配全局顺序号，
+    /*
+     * ServerLevel.blockEvent 的 TAIL：仅对成功入队的事件分配全局顺序号，
      * 供按区块保存方块事件后重建世界级执行顺序。
      */
     @Inject(method = "blockEvent", at = @At("TAIL"))

@@ -28,23 +28,15 @@ public final class ChunkNbtBridge {
         long key = ChunkPos.pack(chunkData.getIntOr("xPos", 0), chunkData.getIntOr("zPos", 0));
         CompoundTag safeSave = chunkData.getCompound(KEY_SAFE_SAVE).orElse(null);
         if (safeSave == null) {
-            ChunkRebuildCoordinator.removePending(levelState, key, session);
+            levelState.pendingChunks.remove(key);
             return;
         }
         SafeSaveStore.ChunkSnapshot snapshot = SafeSaveStore.loadChunkData(safeSave);
-        // 同一区块在同一会话内卸载→重载时，先冲销旧快照的计数，避免 /safesave status 重复累计。
-        SafeSaveStore.ChunkSnapshot old = levelState.pendingChunks.get(key);
-        if (old != null) {
-            session.loadedTickCount.addAndGet(-(old.blockTicks().size() + old.fluidTicks().size()));
-            session.loadedBlockEventCount.addAndGet(-old.blockEvents().size());
-        }
         if (snapshot == null || snapshot.isEmpty()) {
             levelState.pendingChunks.remove(key);
             return;
         }
         levelState.pendingChunks.put(key, snapshot);
-        session.loadedTickCount.addAndGet(snapshot.blockTicks().size() + snapshot.fluidTicks().size());
-        session.loadedBlockEventCount.addAndGet(snapshot.blockEvents().size());
         DebugLog.info("{} {}: read {} block + {} fluid tick(s), {} block event(s) from chunk NBT",
                 dimension, ChunkPos.unpack(key),
                 snapshot.blockTicks().size(), snapshot.fluidTicks().size(), snapshot.blockEvents().size());

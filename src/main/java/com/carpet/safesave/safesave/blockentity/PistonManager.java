@@ -15,17 +15,17 @@ import java.util.List;
 
 import static com.carpet.safesave.util.Util.dimensionId;
 
-/**
- * 移动中的活塞（{@code PistonMovingBlockEntity}）的管理。
+/*
+ * 移动中的活塞（PistonMovingBlockEntity）的管理。
  *
- * <p>原版按 {@code Level.blockEntityTickers} 插入顺序刻方块实体，重启后该顺序变成
- * {@code BlockPos} 哈希顺序，使同一刻内完成推动的相邻活塞互相观察到错误的邻居状态。
- * 本类为每个活塞持久化创建序号（{@link PistonOrderHolder}），统一重建时恢复原始相对顺序。
+ * 原版按 Level.blockEntityTickers 插入顺序刻方块实体，重启后该顺序变成
+ * BlockPos 哈希顺序，使同一刻内完成推动的相邻活塞互相观察到错误的邻居状态。
+ * 本类为每个活塞持久化创建序号（PistonOrderHolder），统一重建时恢复原始相对顺序。
  *
- * <p>序号与重建代数是<em>会话级</em>的：{@code PistonMovingBlockEntity} 的
- * {@code loadAdditional} 在方块实体获得所属世界之前运行，没有 level 可寻址，因此保存在
- * {@link SafeSaveSession}；每个维度各自记住最近一次重建代数
- * （{@link SafeSaveLevelState#pistonOrderRebuiltAt}）。
+ * 序号与重建代数是会话级的：PistonMovingBlockEntity 的
+ * loadAdditional 在方块实体获得所属世界之前运行，没有 level 可寻址，因此保存在
+ * SafeSaveSession；每个维度各自记住最近一次重建代数
+ * （SafeSaveLevelState.pistonOrderRebuiltAt）。
  */
 public final class PistonManager {
 
@@ -37,7 +37,7 @@ public final class PistonManager {
         return session == null ? 0L : session.pistonOrder.next();
     }
 
-    /** 确保新创建的活塞严格排在所有从磁盘恢复的顺序值之后；会话未就绪时 no-op。 */
+    // 确保新创建的活塞严格排在所有从磁盘恢复的顺序值之后；会话未就绪时 no-op。
     public static void observePistonOrder(final long restored) {
         SafeSaveSession session = SafeSaveSession.current();
         if (session != null) {
@@ -52,8 +52,8 @@ public final class PistonManager {
         }
     }
 
-    /**
-     * 在 {@code ServerLevel.tick} HEAD 处调用，每刻都运行（含冻结期间，{@code ServerLevel.tick}
+    /*
+     * 在 ServerLevel.tick HEAD 处调用，每刻都运行（含冻结期间，ServerLevel.tick
      * 本身不受门控）：若活塞从 NBT 加载过（代数已推进），重建该维度活塞刻顺序。
      */
     public static void onLevelTickStart(final ServerLevel level,
@@ -78,8 +78,8 @@ public final class PistonManager {
         }
     }
 
-    /**
-     * 恢复 {@code Level.blockEntityTickers} 中移动活塞之间的原始相对刻顺序；
+    /*
+     * 恢复 Level.blockEntityTickers 中移动活塞之间的原始相对刻顺序；
      * 只按创建顺序升序重写被移动活塞占据的槽位，其余刻循环器保持原索引不变。
      */
     private static void rebuildPistonTickOrder(final ServerLevel level) {

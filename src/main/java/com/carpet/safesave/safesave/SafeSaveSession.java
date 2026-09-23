@@ -26,13 +26,8 @@ public final class SafeSaveSession {
     public boolean deferredFlush;
     public boolean deferredForce;
 
-    public final AtomicInteger loadedTickCount = new AtomicInteger();
-    public final AtomicInteger loadedBlockEventCount = new AtomicInteger();
-
     public final AtomicInteger restoredTickCount = new AtomicInteger();
     public final AtomicInteger droppedTickCount = new AtomicInteger();
-    public final AtomicInteger restoredBlockEventCount = new AtomicInteger();
-    public final AtomicInteger droppedBlockEventCount = new AtomicInteger();
 
     public final OrderSequence pistonOrder = new OrderSequence();
     public final AtomicLong pistonOrderGeneration = new AtomicLong();

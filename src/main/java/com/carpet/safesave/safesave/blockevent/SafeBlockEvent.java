@@ -2,16 +2,16 @@ package com.carpet.safesave.safesave.blockevent;
 
 import net.minecraft.nbt.CompoundTag;
 
-/**
+/*
  * 一条已排队的方块事件，为无损恢复而捕获。
  *
- * <p>原版把事件保存在 {@code ServerLevel.blockEvents} 中且<strong>根本不持久化</strong>——
- * 重启会悄然丢弃所有进行中的方块事件（如已排队但未执行的活塞 {@code TRIGGER_EXTEND}）。
- * 该容器是有序集合：按插入顺序执行、相同 {@code (pos, block, paramA, paramB)} 不重复。
+ * 原版把事件保存在 ServerLevel.blockEvents 中且根本不持久化——
+ * 重启会悄然丢弃所有进行中的方块事件（如已排队但未执行的活塞 TRIGGER_EXTEND）。
+ * 该容器是有序集合：按插入顺序执行、相同 (pos, block, paramA, paramB) 不重复。
  *
- * @param paramA {@code BlockEventData.paramA()}——对活塞：0 伸出，1 收回，2 掉落
- * @param paramB {@code BlockEventData.paramB()}——对活塞：{@code Direction.get3DDataValue()}
- * @param order  全局递增序号
+ * paramA：BlockEventData.paramA()——对活塞：0 伸出，1 收回，2 掉落
+ * paramB：BlockEventData.paramB()——对活塞：Direction.get3DDataValue()
+ * order：全局递增序号
  */
 public record SafeBlockEvent(String blockId, int x, int y, int z, int paramA, int paramB, long order) {
 

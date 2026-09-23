@@ -15,12 +15,12 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * {@code parse} 是唯一能看到原始区块 NBT 的加载点（首参即 {@code ServerLevel}，维度已知），
- * {@code copyOf}/{@code write} 是保存侧唯一能拿到世界与最终 NBT 的点。
- * {@code copyOf}（服务器线程）将 tag 暂存于 record 实例的 {@code @Unique} 字段，
- * {@code write}（后台写线程）从同一实例读回——实例经线程池提交，写读间有 happens-before；
- * tag 为 {@code null} 表示无数据或未启用。
+/*
+ * parse 是唯一能看到原始区块 NBT 的加载点（首参即 ServerLevel，维度已知），
+ * copyOf/write 是保存侧唯一能拿到世界与最终 NBT 的点。
+ * copyOf（服务器线程）将 tag 暂存于 record 实例的 @Unique 字段，
+ * write（后台写线程）从同一实例读回——实例经线程池提交，写读间有 happens-before；
+ * tag 为 null 表示无数据或未启用。
  */
 @Mixin(SerializableChunkData.class)
 public abstract class SerializableChunkDataMixin implements SerializableChunkDataAccess {

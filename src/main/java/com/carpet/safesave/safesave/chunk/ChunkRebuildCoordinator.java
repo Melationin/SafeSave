@@ -26,8 +26,8 @@ public final class ChunkRebuildCoordinator {
     private ChunkRebuildCoordinator() {
     }
 
-    /**
-     * 冻结期间刻意<em>不</em>更新 {@code knownChunks}：启动冻结或 {@code /tick freeze} 期间
+    /*
+     * 冻结期间刻意不更新 knownChunks：启动冻结或 /tick freeze 期间
      * 加载的区块，会在解冻后的第一个正常 tick 被统一视为新加载并恢复。
      */
     public static Set<Long> rebuildNewChunks(final ServerLevel level,
@@ -79,7 +79,7 @@ public final class ChunkRebuildCoordinator {
             blockEventsToRestore.addAll(snapshot.blockEvents());
         }
         if (!blockEventsToRestore.isEmpty()) {
-            BlockEventManager.restoreChunkEvents(level, blockEventsToRestore, session, levelState);
+            BlockEventManager.restoreChunkEvents(level, blockEventsToRestore, levelState);
         }
 
         levelState.knownChunks = ready;
@@ -89,14 +89,5 @@ public final class ChunkRebuildCoordinator {
                     session.restoredTickCount.get(), session.droppedTickCount.get());
         }
         return newKeys;
-    }
-
-    public static void removePending(final SafeSaveLevelState levelState, final long key,
-                                     final SafeSaveSession session) {
-        SafeSaveStore.ChunkSnapshot old = levelState.pendingChunks.remove(key);
-        if (old != null) {
-            session.loadedTickCount.addAndGet(-(old.blockTicks().size() + old.fluidTicks().size()));
-            session.loadedBlockEventCount.addAndGet(-old.blockEvents().size());
-        }
     }
 }

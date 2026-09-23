@@ -12,7 +12,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.ticks.ScheduledTick;
 import net.minecraft.world.ticks.TickContainerAccess;
@@ -23,12 +22,12 @@ import java.util.List;
 
 import static com.carpet.safesave.util.Util.dimensionId;
 
-/**
+/*
  * 计划刻的保存与恢复管理。
  *
- * <p>原版把刻以 {@code SavedTick(type, pos, delay, priority)} 存进区块 NBT，加载时按区块
- * 重新锚定 {@code delay} 并丢弃全局 {@code subTickOrder}，导致绝对触发时间漂移、跨区块顺序
- * 被摧毁。本类改用<em>绝对</em> {@code triggerTick} 与原始全局 {@code subTickOrder} 快照/恢复。
+ * 原版把刻以 SavedTick(type, pos, delay, priority) 存进区块 NBT，加载时按区块
+ * 重新锚定 delay 并丢弃全局 subTickOrder，导致绝对触发时间漂移、跨区块顺序
+ * 被摧毁。本类改用绝对 triggerTick 与原始全局 subTickOrder 快照/恢复。
  */
 public final class ScheduledTickManager {
 

@@ -81,14 +81,14 @@ public final class SafeSaveFiles {
         }
     }
 
-    /**
-     * <p>挂在 {@code MinecraftServer.saveAllChunks} 的 HEAD 而非 RETURN：当 {@code flush=true} 时，
-     * 原版会在保存期间运行 {@code processUnloads} 并触发区块 NBT 写入，因此这里只写世界级元数据；
-     * 区块数据由 {@code SerializableChunkDataMixin} 在随后的每个区块保存中写入。
+    /*
+     * 挂在 MinecraftServer.saveAllChunks 的 HEAD 而非 RETURN：当 flush=true 时，
+     * 原版会在保存期间运行 processUnloads 并触发区块 NBT 写入，因此这里只写世界级元数据；
+     * 区块数据由 SerializableChunkDataMixin 在随后的每个区块保存中写入。
      *
-     * <p>首刻之前（{@code session.freezeArmed} 仍为 true）的保存——如
-     * {@code IntegratedServer.initServer} / {@code DedicatedServer.initServer} 里的
-     * {@code saveEverything(false, true, true)}——直接跳过：世界尚未开始 tick，旁置元数据没有
+     * 首刻之前（session.freezeArmed 仍为 true）的保存——如
+     * IntegratedServer.initServer / DedicatedServer.initServer 里的
+     * saveEverything(false, true, true)——直接跳过：世界尚未开始 tick，旁置元数据没有
      * 新内容。模拟等级清单来自上一个完整服务器刻的内存快照：关闭时原版会先卸载全部区块，
      * 因此绝不能在最终 flush 时扫描当时已空的区块表。
      */

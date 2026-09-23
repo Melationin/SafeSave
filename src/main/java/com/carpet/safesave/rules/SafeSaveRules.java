@@ -6,20 +6,20 @@ import static carpet.api.settings.RuleCategory.FEATURE;
 
 public class SafeSaveRules {
 
+    public final static String SAFESAVE="SafeSave";
 
-    @Rule(categories = { FEATURE})
+    @Rule(categories = { FEATURE,SAFESAVE })
     public static boolean safeSave = false;
 
 
-    /** Server ticks to retain the startup loading tickets. */
-    @Rule(categories = { FEATURE})
+    @Rule(categories = { FEATURE,SAFESAVE })
     public static int safeSaveTicketDuration = 30 * 20;
 
-    /** Server ticks from the first real player join to forced unfreeze. */
-    @Rule(categories = { FEATURE})
+    // Server ticks from the first real player join to forced unfreeze.
+    @Rule(categories = { FEATURE,SAFESAVE })
     public static int safeSaveForceUnfreezeTimeout = 300 * 20;
 
-    /** Otherwise the ticket duration begins when the server unfreezes. */
-    @Rule(categories = { FEATURE})
+    // Otherwise the ticket duration begins when the server unfreezes.
+    @Rule(categories = { FEATURE,SAFESAVE })
     public static boolean safeSaveTicketTimerFromFirstPlayer = true;
 }

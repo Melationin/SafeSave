@@ -27,28 +27,14 @@ public final class SafeSaveManager {
     private SafeSaveManager() {
     }
 
-    public static boolean enabled() {
-        return SafeSaveRules.safeSave;
-    }
-
     public static boolean shouldRun() {
         return SafeSaveRules.safeSave;
     }
 
     private static boolean capturesChunk(ServerLevel level, long key) {
         SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-        return enabled() || state.pendingChunks.containsKey(key);
+        return shouldRun() || state.pendingChunks.containsKey(key);
     }
-
-    public static SafeSaveStore store() {
-        SafeSaveSession session = SafeSaveSession.current();
-        return session == null ? null : session.store;
-    }
-
-    // -----------------------------------------------------------------------
-    // 生命周期：服务器启动
-    // -----------------------------------------------------------------------
-
 
     public static void onServerLoaded(final MinecraftServer server) {
         if (!shouldRun()) {
@@ -97,10 +83,6 @@ public final class SafeSaveManager {
         if (session != null) StartupChunkRecovery.onPlayerJoined(player, session);
     }
 
-    // -----------------------------------------------------------------------
-    // 生命周期：区块 NBT 解析与序列化
-    // -----------------------------------------------------------------------
-
     public static void onChunkTagRead(final ServerLevel level, final CompoundTag chunkData) {
         long key = ChunkPos.pack(chunkData.getIntOr("xPos", 0), chunkData.getIntOr("zPos", 0));
         if (!capturesChunk(level, key)) {
@@ -135,10 +117,6 @@ public final class SafeSaveManager {
         }
         return root;
     }
-
-    // -----------------------------------------------------------------------
-    // 生命周期：tick 与保存
-    // -----------------------------------------------------------------------
 
     public static void onLevelTickStart(final ServerLevel level) {
         SafeSaveSession startupSession = SafeSaveSession.current();
@@ -263,10 +241,9 @@ public final class SafeSaveManager {
     }
 
     /*
-      在 MinecraftServer.saveAllChunks 的 HEAD 处调用（自动保存、save-all、
-     关闭时的最终保存），也在 Carpet 的 onServerClosed}（{stopServer} 的 HEAD）
-     处调用：关闭后会话刻意保留（不得 clear），因为原版在 onServerClosed 之后还会保存一次，
-     此时区块序列化仍要读取会话里的 store。
+      在 MinecraftServer.saveAllChunks 的 HEAD 处调用（自动保存、save-all、关闭时的最终保存），
+      也在 Carpet 的 onServerClosed（stopServer 的 HEAD）处调用：会话刻意保留（不得 clear），
+      因为原版在 onServerClosed 之后还会保存一次，此时区块序列化仍要读取会话里的 store。
      */
     public static void saveAll(final MinecraftServer server) {
         if (!shouldRun()) {

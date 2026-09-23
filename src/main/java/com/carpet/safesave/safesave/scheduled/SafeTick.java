@@ -24,10 +24,11 @@ public record SafeTick(String typeId, int x, int y, int z, long triggerTick, int
         return tag;
     }
 
-    /**
-     * @return 解析出的刻；当条目格式错误（id 缺失/为空）时为 {@code null}
+    /*
+     * 解析出的刻；当条目格式错误（id 缺失/为空）时为 null
      */
-    public static SafeTick load(final CompoundTag tag) {        String id = tag.getStringOr(KEY_ID, "");
+    public static SafeTick load(final CompoundTag tag) {
+        String id = tag.getStringOr(KEY_ID, "");
         if (id.isEmpty()) {
             return null;
         }

@@ -4,7 +4,6 @@ package com.carpet.safesave.safesave.blockevent;
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
-import com.carpet.safesave.safesave.SafeSaveSession;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -31,11 +30,8 @@ public final class BlockEventManager {
     private BlockEventManager() {
     }
 
-    // ------------------------------------------------------------ 运行时序号
-
     /*
-      在  ServerLevel.blockEvent TAIL 调用
-      用 containsKey 识别重复并保持原有序号。
+      在 ServerLevel.blockEvent TAIL 调用。用 containsKey 识别重复并保持原有序号。
      */
     public static void onBlockEvent(final ServerLevel level, final BlockEventData event) {
         SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
@@ -99,12 +95,8 @@ public final class BlockEventManager {
         return snapshotByChunk(level, levelState).getOrDefault(packedChunkPos, List.of());
     }
 
-    // ------------------------------------------------------------ 恢复
-
-    //把一批方块事件按全局序号排序后重新入队
     public static void restoreChunkEvents(final ServerLevel level,
                                           final List<SafeBlockEvent> saved,
-                                          final SafeSaveSession session,
                                           final SafeSaveLevelState levelState) {
         if (saved == null || saved.isEmpty()) {
             return;
@@ -114,7 +106,6 @@ public final class BlockEventManager {
             Identifier id = Identifier.tryParse(entry.blockId());
             // BLOCK 是 DefaultedRegistry：getValue() 遇到未知 id 会悄悄返回 AIR。
             if (id == null || !BuiltInRegistries.BLOCK.containsKey(id)) {
-                session.droppedBlockEventCount.incrementAndGet();
                 DebugLog.warn("dropping block event for unknown block '{}' at ({},{},{})",
                         entry.blockId(), entry.x(), entry.y(), entry.z());
                 continue;
@@ -148,7 +139,6 @@ public final class BlockEventManager {
                 restored++;
             }
             levelState.nextBlockEventOrder = next;
-            session.restoredBlockEventCount.addAndGet(restored);
             DebugLog.info("{}: restored {} block event(s) in global order ({} pre-existing kept behind them)",
                     dimensionId(level), restored, existing.size());
         } finally {

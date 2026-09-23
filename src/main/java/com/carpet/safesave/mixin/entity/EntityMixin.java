@@ -24,7 +24,7 @@ import java.util.Optional;
 public abstract class EntityMixin implements EntityOrderHolder
 {
 
-    /** 实体 tick 序号；未知（本会话新生成）时为 {@link Long#MIN_VALUE}。 */
+    // 实体 tick 序号；未知（本会话新生成）时为 Long.MIN_VALUE。
     @Unique
     private long SS$entityOrder = Long.MIN_VALUE;
 

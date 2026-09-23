@@ -2,7 +2,7 @@ package com.carpet.safesave.safesave.chunk;
 
 import com.carpet.safesave.safesave.SafeSaveStore;
 
-/** Transient snapshot for one loaded chunk; never serialized as a Java field. */
+// Transient snapshot for one loaded chunk; never serialized as a Java field.
 public interface ChunkSnapshotHolder {
     long SS$lastSnapshotGameTime();
     int SS$lastSnapshotServerTick();

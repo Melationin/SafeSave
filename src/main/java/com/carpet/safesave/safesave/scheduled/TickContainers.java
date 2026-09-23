@@ -5,15 +5,9 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.server.level.ServerLevel;
 
-/**
- * 世界级计划刻容器的访问层。
- *
- * <p>{@code LevelTicks.allContainers} 恰好是「此维度中已加载到至少 {@code FULL} 的每个区块」，
- * 以打包的 {@code ChunkPos} 为键——正是 safe-save 保存时需要扫描的集合，而且键直接可用。
- *
- * <p>原版该字段为 private，这里通过 {@code safesave.classtweaker} 的
- * {@code accessible field net/minecraft/world/ticks/LevelTicks allContainers} 放开访问，
- * 不再需要鸭子接口与只为暴露该字段而存在的空壳 mixin。
+/*
+ * LevelTicks.allContainers 是此维度中已加载到至少 FULL 的每个区块，以打包的
+ * ChunkPos 为键。该字段为 private，由 safesave.classtweaker 放开访问。
  */
 public final class TickContainers {
     private TickContainers() {

@@ -34,10 +34,10 @@ public final class SafeSaveLevelState {
 
     public final OrderSequence entityOrder = new OrderSequence();
 
-    /** Simulation levels 31/32 at the last complete server tick. */
+    // Simulation levels 31/32 at the last complete server tick.
     public Long2ByteOpenHashMap tickingChunksAtTickEnd = new Long2ByteOpenHashMap();
     public boolean tickingSnapshotAvailable;
 
-    /** Loading-only tickets restored from the previous side-file save. */
+    // Loading-only tickets restored from the previous side-file save.
     public final Long2ByteOpenHashMap startupTickets = new Long2ByteOpenHashMap();
 }

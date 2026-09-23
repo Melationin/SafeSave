@@ -25,7 +25,7 @@ import net.minecraft.world.level.ChunkPos;
 
 import static com.carpet.safesave.util.Util.dimensionId;
 
-/** Restores the loaded footprint of the last saved simulation tick without simulating it early. */
+// Restores the loaded footprint of the last saved simulation tick without simulating it early.
 public final class StartupChunkRecovery {
     private static final TicketType STARTUP_LOAD = new TicketType(0,
             TicketType.FLAG_LOADING | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
@@ -107,7 +107,7 @@ public final class StartupChunkRecovery {
         }
     }
 
-    /** Retain the last complete simulation-level map even after vanilla unloads all chunks on close. */
+    // Retain the last complete simulation-level map even after vanilla unloads all chunks on close.
     public static void captureTickEnd(ServerLevel level, SafeSaveSession session) {
         if (session.startupRecoveryWaiting) return;
         var source = level.getChunkSource();
