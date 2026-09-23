@@ -34,7 +34,15 @@ public abstract class ServerLevelMixin implements SafeSaveLevelAccess {
     @Inject(method = "tick", at = @At("HEAD"))
     private void SS$onWorldTickHead(final BooleanSupplier haveTime, final CallbackInfo ci) {
         ServerLevel self = (ServerLevel) (Object) this;
+        this.SS$safeSaveLevelState.worldTickRunning = true;
         SafeSaveManager.onLevelTickStart(self);
+    }
+
+    @Inject(method = "tick", at = @At("RETURN"))
+    private void SS$onWorldTickEnd(final BooleanSupplier haveTime, final CallbackInfo ci) {
+        ServerLevel self = (ServerLevel) (Object) this;
+        this.SS$safeSaveLevelState.worldTickRunning = false;
+        this.SS$safeSaveLevelState.completedWorldTick = self.getServer().getTickCount();
     }
 
     /**

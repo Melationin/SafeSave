@@ -13,8 +13,9 @@ import java.util.Map;
 public final class ProtectedRegionState {
 
     public final java.util.Set<Long> ticketedChunks = new java.util.HashSet<>();
+    /** Loading-only tickets held between pre-tick deactivation and the end-of-tick snapshot. */
+    public final java.util.Set<Long> holdingChunks = new java.util.HashSet<>();
     public final LongSet suspendedAt = new LongOpenHashSet();
-    public final Map<Long, com.carpet.safesave.safesave.SafeSaveStore.ChunkSnapshot> suspendedSnapshots = new java.util.HashMap<>();
     public boolean waiting;
 
     public final Map<String, ProtectedRegion> byName = new LinkedHashMap<>();

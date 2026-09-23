@@ -103,7 +103,7 @@ MinecraftServer.tickServer (:990) HEAD     ← MinecraftServerMixin
 
 ```
 SafeSaveManager.onLevelTickStart
-  ├─ RegionLifecycle.beforeTick(level)      区域票据增删 + 主线程屏障（不论冻结与否）
+  ├─ RegionLifecycle.beforeTick(level)      同步玩家模拟票、整区加票、阻塞至区块/实体全部就绪
   ├─ PistonManager.onLevelTickStart()       活塞刻顺序重建（不论冻结与否）
   └─ if (runsNormally())                    冻结期间跳过，且不更新 knownChunks
        ├─ ChunkRebuildCoordinator.rebuildNewChunks()   消费 pendingChunks
@@ -113,6 +113,8 @@ SafeSaveManager.onLevelTickStart
 > 冻结期间刻意不更新 `knownChunks`：冻结期间加载的区块会在解冻后第一个正常 tick 被统一视为"新加载"并恢复。
 > 冻结期间 `ServerLevel.tick` 本身照跑（不受 `tickRateManager` 门控），所以区域与活塞逻辑仍需在冻结中工作。
 
+`MinecraftServer.tickChildren` 返回时，所有维度、玩家网络包和玩家列表均已处理，但自动保存尚未开始。此处先给已就绪区块生成本服务器刻的快照，再按最新模拟票决定哪些 region 失活：快照保存在每个 `LevelChunk` 的内存字段里，接着清空区内计划刻与方块事件，最后移除 region 票并刷新距离管理器。玩家在 tick 开始前已经离开时，先把 `REGION` 模拟票换成只负责加载的 `REGION_HOLD`，确保本刻不会多执行一次计划刻；tick 末取得快照后才撤掉 hold。原版计划刻阶段在 `ServerChunkCache.tick` 之前，因此移票后不能把距离更新留到下一刻。阻塞加载期间可能执行其他服务器任务；屏障返回前会重算需求，直到需求稳定。
+
 ### 3.3 区块读 / 写
 
 ```
@@ -121,7 +123,7 @@ SafeSaveManager.onLevelTickStart
            └─ ChunkNbtBridge.onChunkTagRead   → levelState.pendingChunks
 
 写：SerializableChunkData.copyOf (:336) RETURN       ← SerializableChunkDataMixin
-      └─ SafeSaveManager.onChunkSerializing → 存入 record 实例的 @Unique 字段
+      └─ SafeSaveManager.onChunkSerializing → 复用本刻快照，或在保存路径现场生成；存入 record 实例的 @Unique 字段
     SerializableChunkData.write (:415) RETURN        ← @ModifyReturnValue
       └─ SafeSaveManager.injectChunkData    → root.put("safeSave", tag)
 ```
@@ -135,6 +137,8 @@ CompletableFuture<CompoundTag> encodedData = CompletableFuture.supplyAsync(data:
 ```
 
 **同一个 `data` 实例**从服务器线程的 `copyOf` 交给后台线程的 `data::write`，且经 `CompletableFuture` 存在 happens-before。因此用 record 实例上的 `@Unique CompoundTag SS$safeSaveTag` 做跨线程交接是安全的，不需要原来的 `IdentityHashMap` 交接表。卸载路径（`ChunkMap.java:528`）走同一个私有 `save()`(:741)，行为一致。
+
+每个 `LevelChunk` 有仅在内存中的快照及其 `gameTime`、服务器刻和捕获阶段。相同服务器刻内的重复保存复用快照；普通保存若发现本刻还没有快照，且该维度的世界 tick 已结束，就现场采集。原版 `ChunkMap.tick` 会在 `ServerLevel.tick` 内保存并卸载区块；此路径和 tick 内的全量保存都推迟到 `tickChildren` 末尾采集快照之后，绝不在世界 tick 中间采集。冻结时 `gameTime` 不增长，因此去重还要比较服务器刻。待恢复或已挂起区块写回原始快照，不能用未重建或已清空的活容器覆盖它；挂起区块没有第二份 `suspendedSnapshots`，其权威快照就是 `LevelChunk` 字段及后续的区块 NBT。仅开启 `safeSaveRegions` 时，只对受保护区块执行此流程。
 
 ### 3.4 存档
 
@@ -163,19 +167,17 @@ MinecraftServer.stopServer 内最终存档：this.saveAllChunks(false, true, fal
 |---|---|---|---|---|
 | `MinecraftServerMixin` | `prepareLevels` | HEAD | `:578` | 「levels 与 store 同时可用」的最早时刻；恢复 `subTickCount` 必须早于任何新刻被分配（§5.1） |
 | 同上 | `tickServer` | HEAD | `:990` | freeze 必须在任何东西前进之前 |
+| 同上 | `tickChildren` | RETURN | `:1119` | 全部世界与玩家包处理完毕、自动保存之前，拍快照并判定 region 失活 |
 | 同上 | `saveAllChunks` | HEAD | `:621` | 见 §3.4 |
 | `ServerLevelMixin` | `tick` | HEAD | — | 每刻维护（区域票据、活塞重建、新加载区块统一重建）的落点 |
-| 同上 | `shouldTickBlocksAt(J)` | HEAD cancellable | `:461` | 区域外区块禁随机刻 |
-| 同上 | `tickChunk` | HEAD cancellable | `:486` | 同上 |
-| 同上 | `tickNonPassenger` / `tickPassenger` | HEAD cancellable | `:812` / `:826`(private) | 区域外实体不 tick；玩家例外 |
 | 同上 | `blockEvent` | **TAIL** | `:1238` | 见 §6.3（已知选点缺陷，暂不改） |
+| `LevelChunkMixin` | 内存字段 | `@Unique` | — | 保存最近一次刻/事件快照及去重时间戳；没有 `@Accessor` |
 | `SerializableChunkDataMixin` | `parse` | HEAD | `:110` static | 唯一能看到**原始区块 NBT** 的加载点，首参即 `ServerLevel`（维度已知） |
 | 同上 | `copyOf` | RETURN | `:336` static | 保存侧唯一能同时拿到**世界**与**区块**的点 |
 | 同上 | `write` | `@ModifyReturnValue` | `:415` | 保存侧唯一能拿到**最终 NBT** 的点 |
-| `ChunkMapMixin` | `saveAllChunks` | HEAD | `:419` | 存档前把受保护区块标脏 |
+| `ChunkMapMixin` | `saveAllChunks` | HEAD | `:419` | tick 内的全量保存推迟到 tick 末，存档前把受保护区块标脏 |
+| 同上 | `tick` → `processUnloads` | `@WrapOperation` | `:456` | tick 内卸载与急迫保存推迟到本刻快照之后 |
 | 同上 | `save(ChunkAccess)` | `@WrapOperation` `require=2, allow=2` | `:528` + `:727` | 恰有两处直调点；**不要在 `save` 内部标脏**，flush 循环会永不结束 |
-| `ServerChunkCacheMixin` | `addTicket(UNKNOWN,·)` in `getChunkFutureMainThread` | `@WrapOperation` | `:240`（唯一一处） | 内部 `getBlockState`/`getBlockEntity` 会在区域票据下反复续 UNKNOWN 票，把活动机器变成永久区块加载器 |
-| `ServerChunkCacheMixin` | `tickSpawningChunk` | HEAD cancellable | — | 区域外不刷怪 |
 | `LevelTicksMixin` | `allContainers` | `@Shadow` | `:34` | 暴露「本维度已加载至至少 FULL 的每个区块」 |
 | `LevelChunkTicksMixin` | `pendingTicks` / `ticksPerPosition` | `@Shadow` | `:19` / `:20` | 见 §6.4 |
 | `EntityTickListMixin` | `active` / `add` | `@Shadow` / HEAD | `:12` / `:31` | `add` 是所有实体进入 tick 列表的唯一入口 |
@@ -379,13 +381,15 @@ SafeSaveStore.ChunkSnapshot snapshot = levelState.pendingChunks.get(key);
 
 消费点唯一：`ChunkRebuildCoordinator.rebuildNewChunks` 在**恢复成功之后**才 `pendingChunks.remove(key)`。恢复失败则移除并丢弃快照（记 warn）。
 
-### 5.7 ProtectedRegion：不做局部冻结，只做启动屏障
+### 5.7 ProtectedRegion：整区加载、挂起与恢复
 
-Region **不做局部冻结**：每次保存时，只把当时**全部区块均完整加载**的 Region 标记为下次启动目标（`requiredAtStartup`）；region 解冻模式会**全局冻结**服务器，直到这些目标再次全部加载或超时。
+`REGION` 票同时具有加载与模拟标志，层级为 31（`ENTITY_TICKING`）。当任一区块本来会被**外部模拟票**推进到 32（`BLOCK_TICKING`）时，整个 region 获得 31 级票；阻塞加载和实体就绪检查全部完成后才进入世界 tick，随后统一恢复区内计划刻、方块事件和活塞 `lastTicked`。这个屏障设在 `ServerLevel.tick` 的最前面，不对单条计划刻或方块事件加门控。
 
-- 票据层级 `new Ticket(REGION, 31)`；26.1 常量 `FULL_CHUNK_LEVEL=33`、`BLOCK_TICKING_LEVEL=32`、`ENTITY_TICKING_LEVEL=31` → 该区块为 **ENTITY_TICKING**，FULL 状态外扩 `33-31=2` 区块，与 `RegionTicketPolicy.reaches(source, key, 2)` 严格对应。
-- `RegionTicketPolicy.required` 是**纯函数**、从外部根重算（**绝不以昨天的区域票据为根**，否则自我续期永不卸载），可脱离 MC 生命周期单测（`regression/RegionRegressionTest.java`）。
-- 超时用**服务器刻**而非 `gameTime`：freeze 期间 `gameTime` 不前进，用它做超时会永远不触发。
+外部需求扫描使用 `TicketType.doesSimulate()`，包括玩家的 `PLAYER_SIMULATION`；只负责加载的 `PLAYER_LOADING` 不能让 region 保持活跃。命令传送先更新玩家坐标，而原版的 `ChunkMap.move` 可能延后；判定前会对尚未同步的玩家调用原版 `move`，让模拟票与实际位置一致。`RegionTicketPolicy.required` 是从外部票据重算的纯函数，绝不拿自己的 `REGION` 票作根；相邻 region 只有被 31 级票的 **BLOCK_TICKING 半径 1** 覆盖时才一同激活。
+
+失活判定发生在服务器 tick 末尾；若没有外部票继续推动区域，则先保留各区块字段里的快照，再清掉活队列，最后整区移票并刷新原版模拟距离索引。若需求在前一刻末之后、下一刻开始之前消失，则在世界 tick 前先将模拟票换为加载票，tick 末再完成清理和移票，避免近端区块额外模拟 1 gt。`safeSaveRegions` 单独开启也会对受保护区块保存和恢复快照；每次全量保存还会强制这些区块写盘。
+
+启动冻结是另一层机制：每次保存只把当时仍由 region 票保持活跃、且全部区块均完整加载的 region 标记为下次启动目标（`requiredAtStartup`）；已撤票但区块尚未完成物理卸载的失活 region 不算。`region` 解冻模式全局冻结服务器，直到这些目标再次全部加载或超时。超时使用服务器刻，因为冻结期间 `gameTime` 不前进。
 
 ### 5.8 按维度用「生成计数器」而非布尔脏标记
 
@@ -418,14 +422,14 @@ Region **不做局部冻结**：每次保存时，只把当时**全部区块均�
 |---|---|
 | **崩溃 / `kill -9`** | 自动存档异步写盘；非正常退出会丢掉上次存档之后的一切。正常 `/stop` 是安全的（§5.5 刻意不短路） |
 | **L5 重新暴露** | 见 §5.2「接受的代价」。已确认 26.1 `LevelTicks.chunkScheduleUpdater`(:40-44) 不标脏，`world.ticks` 包内无 `markUnsaved` |
-| **`blockEvent` 注入点为 TAIL** | `ServerLevelMixin` 在事件已入队后采样，无法直接识别 `ObjectLinkedOpenHashSet` 的去重；`BlockEventManager.onBlockEvent` 用自建序号表判重，而该表只在快照（存档）时经 `refreshOrders` 清理 → 已执行并已从队列移除、但表项仍在的 `BlockEventData`，会把**过期小序号**传给之后新入队的同参数事件。**已知缺陷，暂不修** |
+| **`blockEvent` 注入点为 TAIL** | `ServerLevelMixin` 在事件已入队后采样，无法直接识别 `ObjectLinkedOpenHashSet` 的去重；序号表在每刻末快照时清理，但若同参数事件在同一刻内先执行、再重新入队，仍可能沿用旧序号。**已知缺陷，暂不修** |
 | **恢复失败会固化漂移** | `ChunkRebuildCoordinator` 中 `restoreChunkTicks` 抛异常时丢弃快照；此时容器里是 vanilla 重锚值，下次存档会把它当作"绝对时刻 + 当前 gameTime"写回。仅一条 warn |
 | **区块 `safeSave` 标签无 version 字段** | 与旁置文件的严格精确匹配策略不一致：旁置版本不符会明确报错，区块则会静默解析出部分/空数据 |
 | **规则必须持久化** | 规则在 `loadLevel` HEAD 读取；`/carpet safeSave true` 若不点 `[Change permanently?]` 则只对本会话生效 |
 | **#6 鬼影未修** | `MovingPistonBlock.newBlockEntity` 返回 `null`，方块无法自建 BE。正常路径下两者同份 chunk NBT 一致落盘，只在损坏或注册表变动时触发 |
 | **从未 block-ticking 的区块** | 其 `pendingTicks` 没有绝对时序可存，不快照 |
 | **注册表条目消失** | 对应刻/事件被丢弃并告警。`BLOCK`/`FLUID` 是 `DefaultedRegistry`，所以显式 `containsKey` 校验，而不是让 `getValue()` 静默返回 AIR/EMPTY |
-| **常驻每刻开销** | `rebuildNewChunks` 每非冻结 tick 遍历全部容器；`RegionLifecycle.beforeTick` 每 tick 遍历全部票据；`RegionTicketPolicy.required` 是 O(regions² × chunks) 的不动点循环；`coveredByRegionTicket` 对每次区块加载线性扫描。单机无感，大体量场景需留意 |
+| **常驻每刻开销** | `rebuildNewChunks` 每非冻结 tick 遍历全部容器；tick 末快照遍历已解包区块；活跃 region 每刻扫描模拟票并检查整区就绪。大体量场景需留意 |
 
 ---
 
@@ -474,7 +478,7 @@ tools/start-server.sh                      # 分离式，FIFO 控制台
 | 文件名回落 | `LEGACY_FILE_NAME` 自动迁移 | **无**（已移除） |
 | 调试设施 | `DebugSwitches`【编译期 DEBUG】/ `TickOwnerAware` / `commands/DebugCommand` | **均不存在**；仅保留 `debug/DebugLog`（info/warn/warnOnce） |
 | `/safesave` 命令 | 调试命令树 | **仅 `region` 子树**（add/remove/addChunk/removeChunk/list/info） |
-| 区域支持 | 无 | **ProtectedRegion + 区域票据 + 启动冻结屏障**（§5.7） |
+| 区域支持 | 无 | **ProtectedRegion + 整区票据/挂起/恢复 + 启动冻结屏障**（§5.7） |
 | 实体序号 | 无 | **有**（§4.4） |
 
 **已作废的旧结论**：

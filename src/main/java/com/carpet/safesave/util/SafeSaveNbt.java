@@ -10,7 +10,7 @@ public final class SafeSaveNbt {
     }
     public static final String KEY_SAFE_SAVE = "safeSave";
     public static boolean enabled() {
-        return com.carpet.safesave.safesave.SafeSaveManager.enabled();
+        return com.carpet.safesave.safesave.SafeSaveManager.shouldRun();
     }
 
     public static ValueOutput child(final ValueOutput output) {

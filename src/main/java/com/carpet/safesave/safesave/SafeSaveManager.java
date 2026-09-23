@@ -9,10 +9,12 @@ import com.carpet.safesave.rules.SafeSaveRules;
 import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
 import com.carpet.safesave.safesave.chunk.ChunkNbtBridge;
 import com.carpet.safesave.safesave.chunk.ChunkRebuildCoordinator;
+import com.carpet.safesave.safesave.chunk.ChunkSnapshotManager;
 import com.carpet.safesave.safesave.blockentity.PistonManager;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import com.carpet.safesave.safesave.region.ProtectedRegionCodec;
 import com.carpet.safesave.safesave.region.ProtectedRegionManager;
+import com.carpet.safesave.safesave.region.RegionLifecycle;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
@@ -20,9 +22,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
 
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 
 public final class SafeSaveManager {
 
@@ -35,6 +39,13 @@ public final class SafeSaveManager {
 
     public static boolean shouldRun() {
         return SafeSaveRules.safeSave || SafeSaveRules.safeSaveRegions;
+    }
+
+    private static boolean capturesChunk(ServerLevel level, long key) {
+        SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
+        return enabled() || RegionLifecycle.isProtected(level, key)
+                || state.pendingChunks.containsKey(key)
+                || state.protectedRegions.suspendedAt.contains(key);
     }
 
     public static SafeSaveStore store() {
@@ -66,9 +77,7 @@ public final class SafeSaveManager {
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveStore.DimensionData data = session.store.dimensionOrNull(dimensionId(level));
             if (data != null) {
-                if (enabled()) {
-                    ScheduledTickManager.restoreSubTickCount(level, data);
-                }
+                ScheduledTickManager.restoreSubTickCount(level, data);
                 if (data.regions != null && !data.regions.isEmpty()) {
                     SafeSaveLevelAccess.of(level).protectedRegions.byName.putAll(
                             ProtectedRegionCodec.load(data.regions));
@@ -220,7 +229,8 @@ public final class SafeSaveManager {
     // -----------------------------------------------------------------------
 
     public static void onChunkTagRead(final ServerLevel level, final CompoundTag chunkData) {
-        if (!enabled()) {
+        long key = ChunkPos.pack(chunkData.getIntOr("xPos", 0), chunkData.getIntOr("zPos", 0));
+        if (!capturesChunk(level, key)) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.current();
@@ -233,7 +243,7 @@ public final class SafeSaveManager {
     public static void onChunkSerializing(final ServerLevel level,
                                           final ChunkAccess chunk,
                                           final Object data) {
-        if (!enabled()) {
+        if (!capturesChunk(level, chunk.getPos().pack())) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.current();
@@ -258,8 +268,8 @@ public final class SafeSaveManager {
     // -----------------------------------------------------------------------
 
     public static void onLevelTickStart(final ServerLevel level) {
-        com.carpet.safesave.safesave.region.RegionLifecycle.beforeTick(level);
-        if (!shouldRun()) {
+        RegionLifecycle.beforeTick(level);
+        if (!shouldRun() && SafeSaveLevelAccess.of(level).pendingChunks.isEmpty()) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.current();
@@ -267,7 +277,7 @@ public final class SafeSaveManager {
             return;
         }
         SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
-        if (enabled()) {
+        if (shouldRun()) {
             // 活塞刻顺序重建必须在冻结期间也运行：ServerLevel.tick 本身不受 tickRateManager 门控，
             // 而 PME loadAdditional 发生在区块加载时（可能早于第一个非冻结 tick）。
             PistonManager.onLevelTickStart(level, session, levelState);
@@ -275,9 +285,41 @@ public final class SafeSaveManager {
         if (!level.tickRateManager().runsNormally()) {
             return;
         }
-        if (enabled()) {
+        if (shouldRun() || !levelState.pendingChunks.isEmpty()) {
             Set<Long> newChunks = ChunkRebuildCoordinator.rebuildNewChunks(level, session, levelState);
             EntityOrderManager.rebuildChunks(level, newChunks);
+        }
+    }
+
+    public static boolean canCaptureSnapshot(final ServerLevel level) {
+        SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
+        return !state.worldTickRunning && state.completedWorldTick == level.getServer().getTickCount();
+    }
+
+    public static void onServerTickEnd(final MinecraftServer server, final BooleanSupplier haveTime) {
+        SafeSaveSession session = SafeSaveSession.current();
+        for (ServerLevel level : server.getAllLevels()) {
+            if (shouldRun() && session != null && session.store != null) {
+                ChunkSnapshotManager.captureAtServerTickEnd(level, SafeSaveLevelAccess.of(level), enabled());
+            }
+            RegionLifecycle.afterServerTick(level);
+        }
+        if (session != null && session.deferredSaveAll) {
+            session.deferredSaveAll = false;
+            SafeSaveFiles.saveAll(server, session);
+        }
+        for (ServerLevel level : server.getAllLevels()) {
+            SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
+            if (state.deferredFullSave) {
+                boolean flush = state.deferredFullSaveFlush;
+                state.deferredFullSave = false;
+                state.deferredFullSaveFlush = false;
+                level.getChunkSource().chunkMap.saveAllChunks(flush);
+            }
+            if (state.deferredUnloads) {
+                state.deferredUnloads = false;
+                level.getChunkSource().chunkMap.processUnloads(haveTime);
+            }
         }
     }
 
@@ -292,8 +334,14 @@ public final class SafeSaveManager {
             return;
         }
         SafeSaveSession session = SafeSaveSession.current();
-        if (session == null || session.store == null) {
+        if (session == null || session.store == null || session.freezeArmed) {
             return;
+        }
+        for (ServerLevel level : server.getAllLevels()) {
+            if (!canCaptureSnapshot(level)) {
+                session.deferredSaveAll = true;
+                return;
+            }
         }
         SafeSaveFiles.saveAll(server, session);
     }

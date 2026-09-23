@@ -8,20 +8,11 @@ import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
-import com.carpet.safesave.safesave.blockevent.BlockEventManager;
-import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
-import com.carpet.safesave.safesave.scheduled.SafeTickContainer;
-import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.material.Fluid;
-import net.minecraft.world.ticks.TickContainerAccess;
-
-import java.util.List;
 
 public final class ChunkNbtBridge {
 
@@ -65,39 +56,12 @@ public final class ChunkNbtBridge {
         if (session.store == null) {
             return null;
         }
-        if (!(chunk instanceof LevelChunk)) {
+        if (!(chunk instanceof LevelChunk levelChunk)) {
             return null;
         }
-        long key = chunk.getPos().pack();
-
-        // 待恢复快照只有在 rebuildNewChunks 消费后才会移除。这里只读取（peek），
-        // 这样在 load→rebuild 窗口内被保存多少次，写回磁盘的都是原始绝对快照。
-        SafeSaveStore.ChunkSnapshot snapshot = levelState.pendingChunks.get(key);
-        SafeSaveStore.ChunkSnapshot suspended = levelState.protectedRegions.suspendedSnapshots.get(key);
-        if (suspended != null) snapshot = suspended;
-        if (snapshot == null) {
-            if (!(chunk.getBlockTicks() instanceof SafeTickContainer)
-                    || !(chunk.getFluidTicks() instanceof SafeTickContainer)) {
-                return null;
-            }
-            @SuppressWarnings("unchecked")
-            TickContainerAccess<Block> blockAccess =
-                    (TickContainerAccess<Block>) chunk.getBlockTicks();
-            @SuppressWarnings("unchecked")
-            TickContainerAccess<Fluid> fluidAccess =
-                    (TickContainerAccess<Fluid>) chunk.getFluidTicks();
-            ScheduledTickManager.ChunkTickSnapshot ticks =
-                    ScheduledTickManager.snapshotChunkTicks(level, key, blockAccess, fluidAccess);
-            if (ticks == null) {
-                return null;
-            }
-            List<SafeBlockEvent> events = BlockEventManager.snapshotChunkEvents(level, key, levelState);
-            if (ticks.isEmpty() && events.isEmpty()) {
-                return null;
-            }
-            snapshot = new SafeSaveStore.ChunkSnapshot(ticks.blockTicks(), ticks.fluidTicks(), events,
-                    level.getGameTime());
-        }
+        // Before rebuild, persist the original snapshot rather than the incomplete live containers.
+        SafeSaveStore.ChunkSnapshot snapshot = ChunkSnapshotManager.forSave(level, levelChunk, levelState);
+        if (snapshot == null) return null;
 
         CompoundTag tag = SafeSaveStore.saveChunkData(snapshot);
         return tag.isEmpty() ? null : tag;

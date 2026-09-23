@@ -15,10 +15,10 @@ import java.util.List;
 import static com.carpet.safesave.util.Util.dimensionId;
 
 /**
- * ProtectedRegion 的保存快照与启动恢复屏障。
+ * ProtectedRegion 的启动恢复屏障与保存目标记录。
  *
- * <p>Region 不做局部冻结：每次保存时，只把当时全部区块均完整加载的 Region 标记为下次启动目标；
- * region 解冻模式会全局冻结服务器，直到这些目标再次全部加载或超时。
+ * <p>运行时整区的票据、挂起和恢复由 {@link RegionLifecycle} 负责。这里记录下次启动时
+ * 哪些 region 需要全局冻结屏障，并检查它们是否已完整加载。
  */
 public final class ProtectedRegionManager {
 
@@ -32,7 +32,9 @@ public final class ProtectedRegionManager {
         int required = 0;
         for (ProtectedRegion region : levelState.protectedRegions.byName.values()) {
             if (capture) {
-                region.requiredAtStartup = SafeSaveRules.safeSaveRegions && isFullyLoaded(level, region);
+                region.requiredAtStartup = SafeSaveRules.safeSaveRegions
+                        && levelState.protectedRegions.ticketedChunks.containsAll(region.chunks)
+                        && isFullyLoaded(level, region);
             }
             if (region.requiredAtStartup) {
                 required++;

@@ -24,6 +24,14 @@ public final class SafeSaveLevelState {
 
     public boolean staleWarned;
 
+    // Vanilla can save/unload chunks inside ServerLevel.tick. Defer those writes until
+    // the server-tick-end snapshot has been placed on each LevelChunk.
+    public boolean worldTickRunning;
+    public int completedWorldTick = Integer.MIN_VALUE;
+    public boolean deferredUnloads;
+    public boolean deferredFullSave;
+    public boolean deferredFullSaveFlush;
+
     public final OrderSequence entityOrder = new OrderSequence();
 
     public final ProtectedRegionState protectedRegions = new ProtectedRegionState();

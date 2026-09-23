@@ -24,6 +24,11 @@ public abstract class MinecraftServerMixin {
         SafeSaveManager.onFirstServerTick((MinecraftServer) (Object) this);
     }
 
+    @Inject(method = "tickChildren", at = @At("RETURN"))
+    private void SS$onServerTickEnd(final BooleanSupplier haveTime, final CallbackInfo ci) {
+        SafeSaveManager.onServerTickEnd((MinecraftServer) (Object) this, haveTime);
+    }
+
     @Inject(method = "saveAllChunks", at = @At("HEAD"))
     private void SS$onSaveAllChunks(final boolean silent,
                                                final boolean flush,

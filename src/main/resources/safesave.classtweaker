@@ -9,6 +9,8 @@ accessible field net/minecraft/server/level/ServerChunkCache ticketStorage Lnet/
 accessible field net/minecraft/world/level/TicketStorage tickets Lit/unimi/dsi/fastutil/longs/Long2ObjectOpenHashMap;
 accessible method net/minecraft/server/level/ServerChunkCache runDistanceManagerUpdates ()Z
 accessible field net/minecraft/server/level/ChunkMap visibleChunkMap Lit/unimi/dsi/fastutil/longs/Long2ObjectLinkedOpenHashMap;
+accessible method net/minecraft/server/level/ChunkMap processUnloads (Ljava/util/function/BooleanSupplier;)V
+accessible method net/minecraft/server/level/ChunkMap saveAllChunks (Z)V
 accessible method net/minecraft/world/level/storage/TagValueOutput <init> (Lnet/minecraft/util/ProblemReporter;Lcom/mojang/serialization/DynamicOps;Lnet/minecraft/nbt/CompoundTag;)V
 
 inject-interface net/minecraft/world/level/storage/TagValueOutput com/carpet/safesave/util/ValueOutputAccess
