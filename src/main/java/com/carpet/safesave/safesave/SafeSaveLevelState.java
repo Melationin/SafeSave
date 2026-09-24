@@ -34,7 +34,7 @@ public final class SafeSaveLevelState {
 
     public final OrderSequence entityOrder = new OrderSequence();
 
-    // Simulation levels 31/32 at the last complete server tick.
+    // Simulation levels 31/32 as of the last save.
     public Long2ByteOpenHashMap tickingChunksAtTickEnd = new Long2ByteOpenHashMap();
     public boolean tickingSnapshotAvailable;
 

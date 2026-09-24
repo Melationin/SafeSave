@@ -89,7 +89,7 @@ public final class SafeSaveFiles {
      * 首刻之前（session.freezeArmed 仍为 true）的保存——如
      * IntegratedServer.initServer / DedicatedServer.initServer 里的
      * saveEverything(false, true, true)——直接跳过：世界尚未开始 tick，旁置元数据没有
-     * 新内容。模拟等级清单来自上一个完整服务器刻的内存快照：关闭时原版会先卸载全部区块，
+     * 新内容。模拟等级清单在保存时采集：关闭时原版会先卸载全部区块，
      * 因此绝不能在最终 flush 时扫描当时已空的区块表。
      */
     public static void saveAll(final MinecraftServer server, final SafeSaveSession session) {

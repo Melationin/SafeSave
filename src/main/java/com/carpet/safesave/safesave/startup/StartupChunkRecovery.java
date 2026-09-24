@@ -111,28 +111,30 @@ public final class StartupChunkRecovery {
         }
     }
 
-    // Retain the last complete simulation-level map even after vanilla unloads all chunks on close.
-    public static void captureTickEnd(ServerLevel level, SafeSaveSession session) {
+    // 只在保存时采集，且关闭路径必须先于原版的区块卸载执行（见 SafeSaveManager.saveAtShutdown）。
+    public static void captureTicking(MinecraftServer server, SafeSaveSession session) {
         if (session.startupRecoveryWaiting) return;
-        var source = level.getChunkSource();
-        for (ServerPlayer player : level.players()) {
-            if (!player.isRemoved()
-                    && player.getLastSectionPos().asLong() != SectionPos.of(player).asLong()) {
-                source.move(player);
+        for (ServerLevel level : server.getAllLevels()) {
+            var source = level.getChunkSource();
+            for (ServerPlayer player : level.players()) {
+                if (!player.isRemoved()
+                        && player.getLastSectionPos().asLong() != SectionPos.of(player).asLong()) {
+                    source.move(player);
+                }
             }
-        }
-        source.runDistanceManagerUpdates();
-        Long2ByteOpenHashMap levels = new Long2ByteOpenHashMap();
-        for (Long2ByteMap.Entry entry : source.chunkMap.getDistanceManager()
-                .simulationChunkTracker.chunks.long2ByteEntrySet()) {
-            byte simulationLevel = entry.getByteValue();
-            if (simulationLevel <= 32) {
-                levels.put(entry.getLongKey(), simulationLevel <= 31 ? (byte)31 : (byte)32);
+            source.runDistanceManagerUpdates();
+            Long2ByteOpenHashMap levels = new Long2ByteOpenHashMap();
+            for (Long2ByteMap.Entry entry : source.chunkMap.getDistanceManager()
+                    .simulationChunkTracker.chunks.long2ByteEntrySet()) {
+                byte simulationLevel = entry.getByteValue();
+                if (simulationLevel <= 32) {
+                    levels.put(entry.getLongKey(), simulationLevel <= 31 ? (byte)31 : (byte)32);
+                }
             }
+            SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
+            state.tickingChunksAtTickEnd = levels;
+            state.tickingSnapshotAvailable = true;
         }
-        SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-        state.tickingChunksAtTickEnd = levels;
-        state.tickingSnapshotAvailable = true;
     }
 
     private static LoadStatus loadStatus(MinecraftServer server) {

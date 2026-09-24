@@ -38,9 +38,10 @@ public class CarpetServer implements CarpetExtension, ModInitializer {
 
     @Override
     public void onServerClosed(MinecraftServer server) {
-        // 在 stopServer 的 HEAD 处触发，与原版 saveAllChunks HEAD 一样写世界级旁置元数据；
+        // 在 stopServer 的 HEAD 处触发：此刻区块尚未卸载，模拟等级清单在这里采集，
+        // 并像原版 saveAllChunks HEAD 一样写世界级旁置元数据。
         // 关闭后会话刻意保留（不得 clear），因为原版之后还会保存一次（见 SafeSaveManager.saveAll）。
-        SafeSaveManager.saveAll(server);
+        SafeSaveManager.saveAtShutdown(server);
     }
 
     @Override

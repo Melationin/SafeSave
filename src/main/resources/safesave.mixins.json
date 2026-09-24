@@ -15,7 +15,6 @@
     "scheduled.LevelChunkTicksMixin",
     "util.TagValueOutputMixin",
     "chunk.SerializableChunkDataMixin",
-    "chunk.LevelChunkMixin",
     "chunk.ChunkMapMixin"
   ],
   "injectors": {

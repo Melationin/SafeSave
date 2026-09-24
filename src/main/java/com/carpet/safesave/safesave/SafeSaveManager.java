@@ -7,7 +7,6 @@ import com.carpet.safesave.rules.SafeSaveRules;
 import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
 import com.carpet.safesave.safesave.chunk.ChunkNbtBridge;
 import com.carpet.safesave.safesave.chunk.ChunkRebuildCoordinator;
-import com.carpet.safesave.safesave.chunk.ChunkSnapshotManager;
 import com.carpet.safesave.safesave.blockentity.PistonManager;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import com.carpet.safesave.safesave.startup.StartupChunkRecovery;
@@ -163,12 +162,6 @@ public final class SafeSaveManager {
 
     public static void onServerTickEnd(final MinecraftServer server, final BooleanSupplier haveTime) {
         SafeSaveSession session = SafeSaveSession.current();
-        for (ServerLevel level : server.getAllLevels()) {
-            if (shouldRun() && session != null && session.store != null) {
-                ChunkSnapshotManager.captureAtServerTickEnd(level, SafeSaveLevelAccess.of(level));
-                StartupChunkRecovery.captureTickEnd(level, session);
-            }
-        }
         if (session != null) {
             session.finalizedServerTick = server.getTickCount();
             session.serverTickRunning = false;
@@ -240,18 +233,32 @@ public final class SafeSaveManager {
         session.deferredForce |= force;
     }
 
+    public static void saveAtShutdown(final MinecraftServer server) {
+        save(server, true);
+    }
+
     /*
-      在 MinecraftServer.saveAllChunks 的 HEAD 处调用（自动保存、save-all、关闭时的最终保存），
-      也在 Carpet 的 onServerClosed（stopServer 的 HEAD）处调用：会话刻意保留（不得 clear），
-      因为原版在 onServerClosed 之后还会保存一次，此时区块序列化仍要读取会话里的 store。
+      挂在 MinecraftServer.saveAllChunks 的 HEAD（自动保存、save-all、关闭时的最终保存）。
+      区块数据由 SerializableChunkDataMixin 在随后的每个区块保存中写入。
      */
     public static void saveAll(final MinecraftServer server) {
+        save(server, !server.isStopped());
+    }
+
+    /*
+      模拟等级清单只在保存时采集。stopServer 的 HEAD 处区块尚未卸载，由 saveAtShutdown 采一次；
+      此后的最终 flush 时 isStopped() 已为 true，不再重采，否则会扫描到已被卸载的区块表。
+     */
+    private static void save(final MinecraftServer server, final boolean captureTicking) {
         if (!shouldRun()) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.current();
         if (session == null || session.store == null || session.freezeArmed) {
             return;
+        }
+        if (captureTicking) {
+            StartupChunkRecovery.captureTicking(server, session);
         }
         SafeSaveFiles.saveAll(server, session);
     }
