@@ -40,14 +40,23 @@ public final class ChunkRebuildCoordinator {
         LongSet ready = TickContainers.collectReadyChunks(level);
 
         LongSet previous = levelState.knownChunks;
-        LongOpenHashSet newKeys = new LongOpenHashSet(ready.size());
-        newKeys.addAll(ready);
-        newKeys.removeAll(previous);
+        LongOpenHashSet newKeys = new LongOpenHashSet();
+        for (long key : ready) {
+            if (!previous.contains(key)) {
+                newKeys.add(key);
+            }
+        }
+
+        // candidates 的键只能来自 pendingChunks，为空时后面整段重建都是空转。
+        if (levelState.pendingChunks.isEmpty()) {
+            levelState.knownChunks = ready;
+            return newKeys;
+        }
 
         LongOpenHashSet candidates = new LongOpenHashSet();
-        for (long boxed : ready) {
-            if (levelState.pendingChunks.containsKey(boxed)) {
-                candidates.add(boxed);
+        for (long key : ready) {
+            if (levelState.pendingChunks.containsKey(key)) {
+                candidates.add(key);
             }
         }
 
