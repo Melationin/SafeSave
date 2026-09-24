@@ -68,6 +68,10 @@ public final class StartupChunkRecovery {
     }
 
     public static void update(MinecraftServer server, SafeSaveSession session) {
+        // 下面两段都不成立时无需每 tick 计算 now。
+        if (!session.startupRecoveryWaiting && !session.startupTicketsHeld) {
+            return;
+        }
         int now = server.getTickCount();
         if (session.startupRecoveryWaiting) {
             if (!server.tickRateManager().isFrozen()) {
@@ -139,8 +143,7 @@ public final class StartupChunkRecovery {
             for (Long2ByteMap.Entry entry : SafeSaveLevelAccess.of(level).startupTickets.long2ByteEntrySet()) {
                 total++;
                 long key = entry.getLongKey();
-                ChunkPos pos = ChunkPos.unpack(key);
-                if (source.getChunkNow(pos.x(), pos.z()) != null
+                if (source.getChunkNow(ChunkPos.getX(key), ChunkPos.getZ(key)) != null
                         && TickContainers.isReady(TickContainers.blockContainers(level).get(key),
                             TickContainers.fluidContainers(level).get(key))
                         && (entry.getByteValue() != 31 || level.areEntitiesLoaded(key))) {
