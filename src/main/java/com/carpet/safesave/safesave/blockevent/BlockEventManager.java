@@ -139,7 +139,7 @@ public final class BlockEventManager {
                 restored++;
             }
             levelState.nextBlockEventOrder = next;
-            DebugLog.info("{}: restored {} block event(s) in global order ({} pre-existing kept behind them)",
+            DebugLog.debug("{}: restored {} block event(s) in global order ({} pre-existing kept behind them)",
                     dimensionId(level), restored, existing.size());
         } finally {
             // 回填既有实时事件到恢复事件之后（恢复事件更老，必须排前面）。

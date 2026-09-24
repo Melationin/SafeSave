@@ -63,7 +63,7 @@ public final class ChunkSnapshotManager {
             return holder.SS$lastSnapshot();
         if (!(chunk.getBlockTicks() instanceof SafeTickContainer)
                 || !(chunk.getFluidTicks() instanceof SafeTickContainer)) return null;
-        ScheduledTickManager.ChunkTickSnapshot ticks = ScheduledTickManager.snapshotChunkTicks(level, key,
+        ScheduledTickManager.ChunkTickSnapshot ticks = ScheduledTickManager.snapshotChunkTicks(
                 chunk.getBlockTicks(), chunk.getFluidTicks());
         if (ticks == null) return null;
         SafeSaveStore.ChunkSnapshot snapshot = new SafeSaveStore.ChunkSnapshot(

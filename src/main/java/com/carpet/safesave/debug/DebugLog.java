@@ -27,6 +27,10 @@ public final class DebugLog {
         LOG.info("[safe-save] " + format, args);
     }
 
+    public static void debug(final String format, final Object... args) {
+        LOG.debug("[safe-save] " + format, args);
+    }
+
     public static void warn(final String format, final Object... args) {
         LOG.warn("[safe-save] " + format, args);
     }

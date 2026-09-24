@@ -39,6 +39,12 @@ public abstract class LevelChunkTicksMixin implements SafeTickContainer {
         return this.pendingTicks != null;
     }
 
+    // count() 是公共 API，原版与 Lithium 的实现均不含遍历。
+    @Override
+    public boolean SS$isEmpty() {
+        return ((LevelChunkTicks<?>) (Object) this).count() == 0;
+    }
+
     @Override
     @SuppressWarnings({"rawtypes", "unchecked"})
     public void SS$replaceAll(final List<?> scheduledTicks) {

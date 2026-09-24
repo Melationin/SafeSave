@@ -37,7 +37,7 @@ public final class ChunkNbtBridge {
             return;
         }
         levelState.pendingChunks.put(key, snapshot);
-        DebugLog.info("{} {}: read {} block + {} fluid tick(s), {} block event(s) from chunk NBT",
+        DebugLog.debug("{} {}: read {} block + {} fluid tick(s), {} block event(s) from chunk NBT",
                 dimension, ChunkPos.unpack(key),
                 snapshot.blockTicks().size(), snapshot.fluidTicks().size(), snapshot.blockEvents().size());
     }

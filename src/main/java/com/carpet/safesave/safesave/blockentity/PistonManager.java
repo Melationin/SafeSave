@@ -116,7 +116,7 @@ public final class PistonManager {
         for (int k = 0; k < slots.size(); k++) {
             tickers.set(slots.get(k), pistons.get(k));
         }
-        DebugLog.info("{}: rebuilt tick order of {} moving piston(s) by creation sequence",
+        DebugLog.debug("{}: rebuilt tick order of {} moving piston(s) by creation sequence",
                 dimensionId(level), pistons.size());
     }
 }

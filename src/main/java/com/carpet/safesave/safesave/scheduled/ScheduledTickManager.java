@@ -31,6 +31,8 @@ import static com.carpet.safesave.util.Util.dimensionId;
  */
 public final class ScheduledTickManager {
 
+    private static final ChunkTickSnapshot EMPTY = new ChunkTickSnapshot(List.of(), List.of());
+
     private ScheduledTickManager() {
     }
 
@@ -74,7 +76,7 @@ public final class ScheduledTickManager {
         int keptFluid = applyTicks((TickContainerAccess<Fluid>) fluidContainer, snapshot.fluidTicks(),
                 BuiltInRegistries.FLUID, ((SafeTickContainer) fluidContainer).SS$snapshotQueue(),
                 snapshot.snapshotGameTime(), currentGameTime, session);
-        DebugLog.info("{} {}: restored {} block + {} fluid tick(s) (expired ticks rebased from gameTime {}; kept {} pre-existing)",
+        DebugLog.debug("{} {}: restored {} block + {} fluid tick(s) (expired ticks rebased from gameTime {}; kept {} pre-existing)",
                 dimension, ChunkPos.unpack(packedChunkPos),
                 snapshot.blockTicks().size(), snapshot.fluidTicks().size(),
                 snapshot.snapshotGameTime(), keptBlock + keptFluid);
@@ -149,21 +151,19 @@ public final class ScheduledTickManager {
             blockTicks = List.copyOf(blockTicks);
             fluidTicks = List.copyOf(fluidTicks);
         }
-
-        public boolean isEmpty() {
-            return this.blockTicks.isEmpty() && this.fluidTicks.isEmpty();
-        }
     }
 
-    public static ChunkTickSnapshot snapshotChunkTicks(final ServerLevel level,
-                                                       final long packedChunkPos,
-                                                       final TickContainerAccess<Block> blockTicks,
+    public static ChunkTickSnapshot snapshotChunkTicks(final TickContainerAccess<Block> blockTicks,
                                                        final TickContainerAccess<Fluid> fluidTicks) {
         SafeTickContainer blockContainer = (SafeTickContainer) blockTicks;
         SafeTickContainer fluidContainer = (SafeTickContainer) fluidTicks;
 
         if (blockContainer.SS$hasPendingTicks() || fluidContainer.SS$hasPendingTicks()) {
             return null;
+        }
+        // 绝大多数区块一个计划刻都没有，此时无需取队列再排序。
+        if (blockContainer.SS$isEmpty() && fluidContainer.SS$isEmpty()) {
+            return EMPTY;
         }
 
         List<?> blockQueue = blockContainer.SS$snapshotQueue();
