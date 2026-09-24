@@ -4,14 +4,13 @@ import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveManager;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
-import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.BlockEventData;
-import net.minecraft.world.level.block.Block;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.function.BooleanSupplier;
@@ -46,13 +45,14 @@ public abstract class ServerLevelMixin implements SafeSaveLevelAccess {
     }
 
     /*
-     * ServerLevel.blockEvent 的 TAIL：仅对成功入队的事件分配全局顺序号，
-     * 供按区块保存方块事件后重建世界级执行顺序。
+     * ServerLevel.blockEvent 的入队点：直接给原版刚构造的 BlockEventData 分配全局顺序号，
+     * 供按区块保存方块事件后重建世界级执行顺序。复用同一个实例，不再多造一个副本。
      */
-    @Inject(method = "blockEvent", at = @At("TAIL"))
-    private void SS$onBlockEvent(final BlockPos pos, final Block block, final int b0, final int b1, final CallbackInfo ci) {
-        ServerLevel self = (ServerLevel) (Object) this;
-        BlockEventManager.onBlockEvent(self, new BlockEventData(pos, block, b0, b1));
+    @ModifyArg(method = "blockEvent", at = @At(value = "INVOKE",
+            target = "Lit/unimi/dsi/fastutil/objects/ObjectLinkedOpenHashSet;add(Ljava/lang/Object;)Z"))
+    private Object SS$assignBlockEventOrder(final Object event) {
+        BlockEventManager.assignOrder((ServerLevel) (Object) this, (BlockEventData) event);
+        return event;
     }
 
 }

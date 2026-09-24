@@ -4,9 +4,7 @@ import com.carpet.safesave.util.OrderSequence;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.world.level.BlockEventData;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -17,7 +15,6 @@ public final class SafeSaveLevelState {
     // parse 线程写入，主线程在 tick 开头消费；保存路径只读
     public final Map<Long, SafeSaveStore.ChunkSnapshot> pendingChunks = new ConcurrentHashMap<>();
 
-    public Map<BlockEventData, Long> blockEventOrders = new HashMap<>();
     public long nextBlockEventOrder;
 
     public long pistonOrderRebuiltAt = -1L;

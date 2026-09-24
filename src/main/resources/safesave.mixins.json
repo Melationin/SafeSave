@@ -7,6 +7,7 @@
     "PlayerListMixin",
     "ServerLevelMixin",
     "blockentity.PistonMovingBlockEntityMixin",
+    "blockevent.BlockEventDataMixin",
     "entity.AbstractMinecartMixin",
     "entity.EntityMixin",
     "entity.EntityTickListMixin",

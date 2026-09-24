@@ -26,6 +26,6 @@ public final class ChunkSnapshotManager {
                 chunk.getBlockTicks(), chunk.getFluidTicks());
         if (ticks == null) return null;
         return new SafeSaveStore.ChunkSnapshot(ticks.blockTicks(), ticks.fluidTicks(),
-                BlockEventManager.snapshotChunkEvents(level, key, state), level.getGameTime());
+                BlockEventManager.snapshotChunkEvents(level, key), level.getGameTime());
     }
 }

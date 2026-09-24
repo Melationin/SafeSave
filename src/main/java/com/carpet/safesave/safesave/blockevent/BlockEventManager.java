@@ -15,9 +15,7 @@ import net.minecraft.world.level.block.Block;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 import static com.carpet.safesave.util.Util.dimensionId;
 
@@ -31,68 +29,32 @@ public final class BlockEventManager {
     }
 
     /*
-      在 ServerLevel.blockEvent TAIL 调用。用 containsKey 识别重复并保持原有序号。
+      在 ServerLevel.blockEvent 的入队点调用。同一刻内的重复入队会命中集合去重，
+      被丢弃的那个新实例不会进入队列，序号因此只在首次入队时生效。
      */
-    public static void onBlockEvent(final ServerLevel level, final BlockEventData event) {
-        SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
-        Map<BlockEventData, Long> levelOrders = levelState.blockEventOrders;
-        if (levelOrders.containsKey(event)) {
-            return;
-        }
-        levelOrders.put(event, levelState.nextBlockEventOrder++);
-    }
-
-    /*
-     丢弃已不在队列中的序号记录
-     */
-    private static void refreshOrders(final ServerLevel level, final SafeSaveLevelState levelState) {
-        Map<BlockEventData, Long> old = levelState.blockEventOrders;
-        Map<BlockEventData, Long> current = new LinkedHashMap<>();
-        long next = levelState.nextBlockEventOrder;
-        for (BlockEventData event : level.blockEvents) {
-            Long order = old.get(event);
-            if (order == null) {
-                order = next++;
-            }
-            current.put(event, order);
-        }
-        levelState.blockEventOrders = current;
-        levelState.nextBlockEventOrder = Math.max(levelState.nextBlockEventOrder, next);
-    }
-
-    public static Map<Long, List<SafeBlockEvent>> snapshotByChunk(final ServerLevel level,
-                                                                  final SafeSaveLevelState levelState) {
-        refreshOrders(level, levelState);
-        Map<BlockEventData, Long> levelOrders = levelState.blockEventOrders;
-        Map<Long, List<SafeBlockEvent>> byChunk = new LinkedHashMap<>();
-        long index = 0;
-        for (BlockEventData event : level.blockEvents) {
-            Long order = levelOrders.get(event);
-            if (order == null) {
-                // 理论上 refreshOrders 后不会发生；防御性回退到队列下标。
-                order = index;
-            }
-            byChunk.computeIfAbsent(ChunkPos.pack(event.pos()), k -> new ArrayList<>())
-                    .add(new SafeBlockEvent(
-                            BuiltInRegistries.BLOCK.getKey(event.block()).toString(),
-                            event.pos().getX(),
-                            event.pos().getY(),
-                            event.pos().getZ(),
-                            event.paramA(),
-                            event.paramB(),
-                            order));
-            index++;
-        }
-        for (List<SafeBlockEvent> events : byChunk.values()) {
-            events.sort(COMPARE_BY_ORDER);
-        }
-        return byChunk;
+    public static void assignOrder(final ServerLevel level, final BlockEventData event) {
+        ((BlockEventOrderHolder) (Object) event)
+                .SS$assignBlockEventOrder(SafeSaveLevelAccess.of(level).nextBlockEventOrder++);
     }
 
     public static List<SafeBlockEvent> snapshotChunkEvents(final ServerLevel level,
-                                                           final long packedChunkPos,
-                                                           final SafeSaveLevelState levelState) {
-        return snapshotByChunk(level, levelState).getOrDefault(packedChunkPos, List.of());
+                                                           final long packedChunkPos) {
+        List<SafeBlockEvent> events = new ArrayList<>();
+        for (BlockEventData event : level.blockEvents) {
+            if (ChunkPos.pack(event.pos()) != packedChunkPos) {
+                continue;
+            }
+            events.add(new SafeBlockEvent(
+                    BuiltInRegistries.BLOCK.getKey(event.block()).toString(),
+                    event.pos().getX(),
+                    event.pos().getY(),
+                    event.pos().getZ(),
+                    event.paramA(),
+                    event.paramB(),
+                    ((BlockEventOrderHolder) (Object) event).SS$blockEventOrder()));
+        }
+        events.sort(COMPARE_BY_ORDER);
+        return events;
     }
 
     public static void restoreChunkEvents(final ServerLevel level,
@@ -122,7 +84,6 @@ public final class BlockEventManager {
         try {
             queue.clear();
 
-            Map<BlockEventData, Long> levelOrders = levelState.blockEventOrders;
             long next = levelState.nextBlockEventOrder;
             int restored = 0;
             for (SafeBlockEvent entry : valid) {
@@ -130,11 +91,18 @@ public final class BlockEventManager {
                 BlockEventData event = new BlockEventData(
                         new BlockPos(entry.x(), entry.y(), entry.z()),
                         block, entry.paramA(), entry.paramB());
+                // 实时队列里已有同一事件时沿用它的序号：恢复实例先入队，集合会丢掉后加的旧实例。
+                long order = entry.order();
+                for (BlockEventData live : existing) {
+                    if (live.equals(event)) {
+                        order = ((BlockEventOrderHolder) (Object) live).SS$blockEventOrder();
+                        break;
+                    }
+                }
+                ((BlockEventOrderHolder) (Object) event).SS$assignBlockEventOrder(order);
                 queue.add(event);
-                // 若事件已存在于实时队列（重复），保留其原有序号；否则写入保存的序号。
-                levelOrders.putIfAbsent(event, entry.order());
-                if (entry.order() >= next) {
-                    next = entry.order() + 1;
+                if (order >= next) {
+                    next = order + 1;
                 }
                 restored++;
             }
