@@ -11,15 +11,12 @@ public class SafeSaveRules {
     @Rule(categories = { FEATURE,SAFESAVE })
     public static boolean safeSave = false;
 
+    @Rule(categories = { FEATURE,SAFESAVE },options = {"1200"},strict = false)
+    public static int safeSaveTicketDuration = 60 * 20;
 
-    @Rule(categories = { FEATURE,SAFESAVE })
-    public static int safeSaveTicketDuration = 30 * 20;
+    @Rule(categories = { FEATURE,SAFESAVE },options = {"0","2400"},strict = false)
+    public static int safeSaveForceUnfreezeTimeout = 0;
 
-    // Server ticks from the first real player join to forced unfreeze.
-    @Rule(categories = { FEATURE,SAFESAVE })
-    public static int safeSaveForceUnfreezeTimeout = 300 * 20;
-
-    // Otherwise the ticket duration begins when the server unfreezes.
-    @Rule(categories = { FEATURE,SAFESAVE })
+    @Rule(categories = { FEATURE,SAFESAVE },options = {"true","false"})
     public static boolean safeSaveTicketTimerFromFirstPlayer = true;
 }

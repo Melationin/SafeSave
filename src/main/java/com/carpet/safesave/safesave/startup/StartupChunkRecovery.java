@@ -38,6 +38,11 @@ public final class StartupChunkRecovery {
     }
 
     public static void arm(MinecraftServer server, SafeSaveSession session) {
+        // 超时为 0 时完全不设屏障：不冻结，也不挂载入票。
+        if (SafeSaveRules.safeSaveForceUnfreezeTimeout <= 0) {
+            DebugLog.info("startup loading barrier disabled (safeSaveForceUnfreezeTimeout <= 0)");
+            return;
+        }
         int total = 0;
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveStore.DimensionData saved = session.store.dimensionOrNull(dimensionId(level));
