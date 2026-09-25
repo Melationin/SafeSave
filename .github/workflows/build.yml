@@ -1,0 +1,38 @@
+# 每次 push 与 PR 都构建两个版本节点（26.1 / 26.2）并上传产物。
+name: build
+on: [pull_request, push]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+      - name: validate gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+      - name: setup jdk
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - name: make gradle wrapper executable
+        run: chmod +x ./gradlew
+      - name: build
+        run: ./gradlew build
+      - name: collect build artifacts
+        run: |
+          mkdir -p "$RUNNER_TEMP/safesave-artifacts"
+          for jar in versions/*/build/libs/*.jar; do
+            target="$RUNNER_TEMP/safesave-artifacts/$(basename "$jar")"
+            if [ -e "$target" ]; then
+              echo "Duplicate artifact name: $(basename "$jar")" >&2
+              exit 1
+            fi
+            cp "$jar" "$target"
+          done
+      - name: capture build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Artifacts
+          path: ${{ runner.temp }}/safesave-artifacts/*.jar
+          if-no-files-found: error
