@@ -33,7 +33,12 @@ stonecutter {
     kotlinController = false
     centralScript = "build.gradle"
     create(getRootProject()) {
-        versions "1.21.5", "1.21.6", "1.21.7", "1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1", "26.2"
+        // 1.21.5 is intentionally not built for now: it predates the ValueInput/ValueOutput
+        // serialization layer (added in 1.21.6) that the entity/piston persistence mixins are
+        // written against, so it would need a second CompoundTag-based backend. Its
+        // versions/1.21.5/gradle.properties is kept in place for when that is tackled.
+        // versions "1.21.5"
+        versions "1.21.6", "1.21.7", "1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1", "26.2"
         vcsVersion = "26.1"
     }
 }
