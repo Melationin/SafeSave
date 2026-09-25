@@ -54,12 +54,11 @@ public abstract class LevelChunkTicksMixin implements SafeTickContainer {
         if (this.ticksPerPosition != null) {
             this.ticksPerPosition.clear();
         }
-        // 丢弃任何仍在等待解包的内容：提供的列表才是权威。
+        // 丢弃任何仍在等待解包的内容
         this.pendingTicks = null;
 
         for (Object entry : scheduledTicks) {
             if (entry instanceof ScheduledTick<?> tick) {
-                // schedule 会按 (type, pos) 去重，并触发 onTickAdded 保持父级 LevelTicks 缓存一致。
                 self.schedule((ScheduledTick) tick);
             }
         }
@@ -67,13 +66,11 @@ public abstract class LevelChunkTicksMixin implements SafeTickContainer {
 
     @Override
     public List<?> SS$snapshotQueue() {
-        // 与 replaceAll 同理走公共 API，两种实现下均返回当前已排队的全部刻（绝对时间完好）。
         try {
             LevelChunkTicks<?> self = (LevelChunkTicks<?>) (Object) this;
             return self.getAll().toList();
         } catch (Exception e) {
             // 与其他 mod 的调度重写冲突时可能读不到：返回 null 让调用方跳过该区块、保留旧条目，
-            // 而非以空快照覆盖。
             DebugLog.warnOnce("tickQueue-unreadable",
                     "LevelChunkTicks.getAll() failed ({}) - skipping this chunk's scheduled ticks. "
                             + "Another mod's tick scheduler rewrite is the likely cause.",

@@ -13,18 +13,12 @@
   "license": "MIT",
 
   "environment": "*",
-  "entrypoints": {
-    "main": [
-      "com.carpet.safesave.CarpetServer"
-    ]
-  },
   "mixins": [
     "safesave.mixins.json"
   ],
   "accessWidener": "safesave.classtweaker",
   "depends": {
     "minecraft": "${minecraftVer}",
-    "fabricloader": ">=0.4.0",
-    "carpet": "*"
+    "fabricloader": ">=0.4.0"
   }
 }

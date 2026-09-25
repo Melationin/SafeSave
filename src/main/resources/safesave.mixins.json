@@ -3,6 +3,7 @@
   "package": "com.carpet.safesave.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "CommandsMixin",
     "MinecraftServerMixin",
     "PlayerListMixin",
     "ServerLevelMixin",

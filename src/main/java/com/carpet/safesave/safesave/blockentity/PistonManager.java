@@ -15,18 +15,7 @@ import java.util.List;
 
 import static com.carpet.safesave.util.Util.dimensionId;
 
-/*
- * 移动中的活塞（PistonMovingBlockEntity）的管理。
- *
- * 原版按 Level.blockEntityTickers 插入顺序刻方块实体，重启后该顺序变成
- * BlockPos 哈希顺序，使同一刻内完成推动的相邻活塞互相观察到错误的邻居状态。
- * 本类为每个活塞持久化创建序号（PistonOrderHolder），统一重建时恢复原始相对顺序。
- *
- * 序号与重建代数是会话级的：PistonMovingBlockEntity 的
- * loadAdditional 在方块实体获得所属世界之前运行，没有 level 可寻址，因此保存在
- * SafeSaveSession；每个维度各自记住最近一次重建代数
- * （SafeSaveLevelState.pistonOrderRebuiltAt）。
- */
+
 public final class PistonManager {
 
     private PistonManager() {

@@ -5,10 +5,7 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.server.level.ServerLevel;
 
-/*
- * LevelTicks.allContainers 是此维度中已加载到至少 FULL 的每个区块，以打包的
- * ChunkPos 为键。该字段为 private，由 safesave.classtweaker 放开访问。
- */
+
 public final class TickContainers {
     private TickContainers() {
     }

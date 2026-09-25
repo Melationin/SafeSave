@@ -22,13 +22,7 @@ import java.util.List;
 
 import static com.carpet.safesave.util.Util.dimensionId;
 
-/*
- * 计划刻的保存与恢复管理。
- *
- * 原版把刻以 SavedTick(type, pos, delay, priority) 存进区块 NBT，加载时按区块
- * 重新锚定 delay 并丢弃全局 subTickOrder，导致绝对触发时间漂移、跨区块顺序
- * 被摧毁。本类改用绝对 triggerTick 与原始全局 subTickOrder 快照/恢复。
- */
+
 public final class ScheduledTickManager {
 
     private static final ChunkTickSnapshot EMPTY = new ChunkTickSnapshot(List.of(), List.of());
@@ -37,8 +31,7 @@ public final class ScheduledTickManager {
     }
 
     /*
-     * 在 MinecraftServer.prepareLevels的 HEAD 调用（世界与存储同时可用的最早时机）：
-     * 必须在任何区块解包之前恢复计数器，否则新调度的刻会与恢复的 subTickOrder 冲突。
+     必须在任何区块解包之前恢复计数器，否则新调度的刻会与恢复的 subTickOrder 冲突。
      */
     public static void restoreSubTickCount(final ServerLevel level, final SafeSaveStore.DimensionData data) {
         if (data.subTickCount >= 0L) {
@@ -53,12 +46,6 @@ public final class ScheduledTickManager {
         }
     }
 
-    /*
-     * 恢复单个区块的计划刻（方块事件由协调层统一恢复）。
-     *
-     * 所有刻按保存时剩余间隔（triggerTick - snapshotGameTime）从恢复时间重新计时。
-     *  snapshotGameTime == Long.MIN_VALUE 时跳过顺延（旧区块数据）。
-     */
     @SuppressWarnings("unchecked")
     public static void restoreChunkTicks(final ServerLevel level,
                                          final long packedChunkPos,

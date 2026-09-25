@@ -1,8 +1,7 @@
 package com.carpet.safesave.safesave.startup;
 
-import carpet.patches.EntityPlayerMPFake;
+import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.debug.DebugLog;
-import com.carpet.safesave.rules.SafeSaveRules;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveSession;
@@ -11,11 +10,8 @@ import com.carpet.safesave.safesave.scheduled.TickContainers;
 import it.unimi.dsi.fastutil.longs.Long2ByteMap;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.Registry;
 import net.minecraft.core.SectionPos;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -25,22 +21,19 @@ import net.minecraft.world.level.ChunkPos;
 
 import static com.carpet.safesave.util.Util.dimensionId;
 
-// Restores the loaded footprint of the last saved simulation tick without simulating it early.
+
 public final class StartupChunkRecovery {
+    // 不注册进 BuiltInRegistries.TICKET_TYPE（该表在 main 入口点之前就已冻结）：本类型无 FLAG_PERSIST，
+    // TicketStorage 从不查注册表，Ticket.CODEC 与 toString() 都用不到未注册类型。
     private static final TicketType STARTUP_LOAD = new TicketType(0,
             TicketType.FLAG_LOADING | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
 
     private StartupChunkRecovery() {}
 
-    public static void initialize() {
-        Registry.register(BuiltInRegistries.TICKET_TYPE,
-                Identifier.parse("safesave:startup_load"), STARTUP_LOAD);
-    }
-
     public static void arm(MinecraftServer server, SafeSaveSession session) {
         // 超时为 0 时完全不设屏障：不冻结，也不挂载入票。
-        if (SafeSaveRules.safeSaveForceUnfreezeTimeout <= 0) {
-            DebugLog.info("startup loading barrier disabled (safeSaveForceUnfreezeTimeout <= 0)");
+        if (SafeSaveConfig.unfreezeTimeout <= 0) {
+            DebugLog.info("startup loading barrier disabled (unfreezeTimeout <= 0)");
             return;
         }
         int total = 0;
@@ -69,7 +62,7 @@ public final class StartupChunkRecovery {
             level.getChunkSource().runDistanceManagerUpdates();
         }
         DebugLog.info("startup frozen; loading {} previously ticking chunk(s), forced release after {} server ticks from the first real player",
-                total, Math.max(0, SafeSaveRules.safeSaveForceUnfreezeTimeout));
+                total, Math.max(0, SafeSaveConfig.unfreezeTimeout));
     }
 
     public static void update(MinecraftServer server, SafeSaveSession session) {
@@ -87,7 +80,7 @@ public final class StartupChunkRecovery {
             if (status.loaded == status.total) {
                 finish(server, session, "after all chunks loaded");
             } else if (session.firstRealPlayerTick >= 0
-                    && now - session.firstRealPlayerTick >= Math.max(0, SafeSaveRules.safeSaveForceUnfreezeTimeout)) {
+                    && now - session.firstRealPlayerTick >= Math.max(0, SafeSaveConfig.unfreezeTimeout)) {
                 DebugLog.warn("startup chunk wait timed out: {}/{} loaded", status.loaded, status.total);
                 finish(server, session, "after the loading timeout");
             } else if (now - session.startupLastLogTick >= 20) {
@@ -96,22 +89,24 @@ public final class StartupChunkRecovery {
             }
         }
         if (session.startupTicketsHeld && !session.startupRecoveryWaiting) {
-            int origin = SafeSaveRules.safeSaveTicketTimerFromFirstPlayer
+            int origin = SafeSaveConfig.timerFromFirstPlayer
                     ? session.firstRealPlayerTick : session.unfreezeTick;
-            if (origin >= 0 && now - origin >= Math.max(0, SafeSaveRules.safeSaveTicketDuration)) {
+            if (origin >= 0 && now - origin >= Math.max(0, SafeSaveConfig.ticketDuration)) {
                 releaseTickets(server, session);
             }
         }
     }
 
     public static void onPlayerJoined(ServerPlayer player, SafeSaveSession session) {
-        if (player instanceof EntityPlayerMPFake) return;
+        // 原版只注册 ServerPlayer 一种实现，子类（假人等）不算真人。
+        if (player.getClass() != ServerPlayer.class) return;
         MinecraftServer server = player.level().getServer();
         if (server == null) return;
         if (session.firstRealPlayerTick < 0) session.firstRealPlayerTick = server.getTickCount();
         if (session.startupRecoveryWaiting) {
-            player.sendSystemMessage(Component.translatable("safesave.message.startup_frozen",
-                    Math.max(0, SafeSaveRules.safeSaveForceUnfreezeTimeout))
+            player.sendSystemMessage(Component.literal(
+                    "[SafeSave] Loading chunks active at the last save. Game ticks are frozen; the wait lasts at most "
+                            + Math.max(0, SafeSaveConfig.unfreezeTimeout) + " server ticks after the first real player joins.")
                     .withStyle(ChatFormatting.YELLOW));
         }
     }
@@ -172,7 +167,7 @@ public final class StartupChunkRecovery {
         session.unfreezeTick = server.getTickCount();
         server.tickRateManager().setFrozen(false);
         DebugLog.info("startup unfroze {} at server tick {}", reason, session.unfreezeTick);
-        Component message = Component.translatable("safesave.message.startup_unfrozen")
+        Component message = Component.literal("[SafeSave] Startup loading wait ended; game ticks have resumed.")
                 .withStyle(ChatFormatting.GREEN);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) player.sendSystemMessage(message);
     }

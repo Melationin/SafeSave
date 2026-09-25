@@ -111,8 +111,6 @@ public final class SafeSaveFiles {
             pending += state.pendingChunks.size();
         }
 
-        // 采集可能落空：单人退出时玩家已先掉线，模拟等级表此刻已没有 31/32 级区块，
-        // 而区块本身还留在内存里。写下去会把上一次有效的清单覆盖成空的，下次启动就丢了加载屏障。
         if (startupChunkTargets == 0) {
             DebugLog.info("skipped safesave world metadata write (0 ticking chunk(s) captured); "
                             + "{} chunk(s) still pending rebuild", pending);

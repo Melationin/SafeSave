@@ -1,6 +1,6 @@
 package com.carpet.safesave.util;
 
-// Translate an absolute time while retaining its offset from the saved simulation boundary.
+
 public final class ResumeTime {
     private ResumeTime() {}
 

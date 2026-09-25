@@ -26,10 +26,6 @@ public final class ChunkRebuildCoordinator {
     private ChunkRebuildCoordinator() {
     }
 
-    /*
-     * 冻结期间刻意不更新 knownChunks：启动冻结或 /tick freeze 期间
-     * 加载的区块，会在解冻后的第一个正常 tick 被统一视为新加载并恢复。
-     */
     public static Set<Long> rebuildNewChunks(final ServerLevel level,
                                              final SafeSaveSession session,
                                              final SafeSaveLevelState levelState) {

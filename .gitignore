@@ -37,6 +37,7 @@ replay_*.log
 /.guser/
 /ref/
 /docs/
-/tools/
+tools/
 
 /run-smoke-stable/
+docs/

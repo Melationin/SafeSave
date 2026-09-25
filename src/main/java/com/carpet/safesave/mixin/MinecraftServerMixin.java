@@ -1,5 +1,6 @@
 package com.carpet.safesave.mixin;
 
+import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.safesave.SafeSaveManager;
 import net.minecraft.server.MinecraftServer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -13,6 +14,19 @@ import java.util.function.BooleanSupplier;
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
 
+
+    @Inject(method = "loadLevel", at = @At("HEAD"))
+    private void SS$onServerLoaded(final CallbackInfo ci) {
+        MinecraftServer server = (MinecraftServer) (Object) this;
+        // 必须先于任何 shouldRun() 判定读档。
+        SafeSaveConfig.load(server);
+        SafeSaveManager.onServerLoaded(server);
+    }
+
+    @Inject(method = "stopServer", at = @At("HEAD"))
+    private void SS$onServerStopping(final CallbackInfo ci) {
+        SafeSaveManager.saveAtShutdown((MinecraftServer) (Object) this);
+    }
 
     @Inject(method = "prepareLevels", at = @At("HEAD"))
     private void SS$onLevelsCreated(final CallbackInfo ci) {

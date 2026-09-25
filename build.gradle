@@ -17,9 +17,6 @@ repositories {
         url = 'https://maven.fabricmc.net/'
     }
     maven {
-        url = 'https://masa.dy.fi/maven'
-    }
-    maven {
         url = 'https://api.modrinth.com/maven'
     }
     mavenCentral()
@@ -43,8 +40,6 @@ loom {
 dependencies {
     minecraft "com.mojang:minecraft:${stonecutter.current.project}"
     implementation "net.fabricmc:fabric-loader:${property("loader_version")}"
-    implementation "net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}"
-    implementation "carpet:fabric-carpet:${property("carpet_core_version")}"
 }
 
 processResources {

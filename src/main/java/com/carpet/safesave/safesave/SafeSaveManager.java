@@ -3,7 +3,7 @@ package com.carpet.safesave.safesave;
 import static com.carpet.safesave.util.SafeSaveNbt.KEY_SAFE_SAVE;
 import static com.carpet.safesave.util.Util.dimensionId;
 
-import com.carpet.safesave.rules.SafeSaveRules;
+import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
 import com.carpet.safesave.safesave.chunk.ChunkNbtBridge;
 import com.carpet.safesave.safesave.chunk.ChunkRebuildCoordinator;
@@ -27,7 +27,7 @@ public final class SafeSaveManager {
     }
 
     public static boolean shouldRun() {
-        return SafeSaveRules.safeSave;
+        return SafeSaveConfig.safeSave;
     }
 
     private static boolean capturesChunk(ServerLevel level, long key) {
