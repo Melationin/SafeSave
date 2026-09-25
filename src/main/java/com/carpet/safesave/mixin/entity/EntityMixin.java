@@ -1,13 +1,18 @@
 package com.carpet.safesave.mixin.entity;
 
+import com.carpet.safesave.util.NbtView;
 import com.carpet.safesave.util.SafeSaveNbt;
 import com.carpet.safesave.safesave.entity.EntityOrderHolder;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Pose;
+//? if <1.21.6 {
+/*import net.minecraft.nbt.CompoundTag;
+*///?} else {
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
+//?}
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -15,6 +20,9 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+//? if <1.21.6 {
+/*import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+*///?}
 
 import java.util.Locale;
 import java.util.Optional;
@@ -57,8 +65,11 @@ public abstract class EntityMixin implements EntityOrderHolder
     @Shadow
     public boolean noPhysics;
 
+    // 1.21.5 has no such field on Entity; it appeared in 1.21.6.
+    //? if >=1.21.6 {
     @Shadow
     private boolean requiresPrecisePosition;
+    //?}
 
     @Shadow
     public boolean isInPowderSnow;
@@ -99,12 +110,25 @@ public abstract class EntityMixin implements EntityOrderHolder
 
 
 
+    // 1.21.5 takes and returns the tag itself; 1.21.6+ writes into a ValueOutput and returns void.
     @Inject(method = "saveWithoutId", at = @At("TAIL"))
-    private void save(final ValueOutput output, final CallbackInfo ci) {
+    private void save(final
+                      //? if <1.21.6 {
+                      /*CompoundTag
+                      *///?} else {
+                      ValueOutput
+                      //?}
+                              output, final
+                      //? if <1.21.6 {
+                      /*CallbackInfoReturnable<CompoundTag>
+                      *///?} else {
+                      CallbackInfo
+                      //?}
+                              ci) {
         if (!SafeSaveNbt.enabled()) {
             return;
         }
-        ValueOutput safe = SafeSaveNbt.child(output);
+        NbtView.Writer safe = SafeSaveNbt.child(NbtView.writer(output));
         safe.store("motion", Vec3.CODEC, this.getDeltaMovement());
         safe.putInt("tick_count", this.tickCount);
         safe.putBoolean("first_tick", this.firstTick);
@@ -113,14 +137,16 @@ public abstract class EntityMixin implements EntityOrderHolder
                 new Vec3(this.pistonDeltas[0], this.pistonDeltas[1], this.pistonDeltas[2]));
         safe.putLong("piston_deltas_game_time", this.pistonDeltasGameTime);
         safe.putBoolean("no_physics", this.noPhysics);
+        //? if >=1.21.6 {
         safe.putBoolean("requires_precise_position", this.requiresPrecisePosition);
+        //?}
         safe.putFloat("move_dist", this.moveDist);
         safe.putFloat("fly_dist", this.flyDist);
         safe.putBoolean("in_powder_snow", this.isInPowderSnow);
         safe.putBoolean("was_in_powder_snow", this.wasInPowderSnow);
         safe.putBoolean("was_touching_water", this.wasTouchingWater);
         safe.putBoolean("was_eye_in_water", this.wasEyeInWater);
-        ValueOutput finalSafe = safe;
+        NbtView.Writer finalSafe = safe;
         this.mainSupportingBlockPos.ifPresent(pos -> finalSafe.store("main_supporting_block_pos", BlockPos.CODEC, pos));
         safe.putBoolean("on_ground_no_blocks", this.onGroundNoBlocks);
         // Pose only became a StringRepresentable with a codec in 1.21.9. The codec writes the
@@ -137,11 +163,17 @@ public abstract class EntityMixin implements EntityOrderHolder
 
 
     @Inject(method = "load", at = @At("TAIL"))
-    private void load(final ValueInput input, final CallbackInfo ci) {
+    private void load(final
+                      //? if <1.21.6 {
+                      /*CompoundTag
+                      *///?} else {
+                      ValueInput
+                      //?}
+                              input, final CallbackInfo ci) {
         if (!SafeSaveNbt.enabled()) {
             return;
         }
-        ValueInput safe = SafeSaveNbt.childOrNull(input);
+        NbtView.Reader safe = SafeSaveNbt.childOrNull(NbtView.reader(input));
         if (safe == null) {
             return;
         }
@@ -156,7 +188,9 @@ public abstract class EntityMixin implements EntityOrderHolder
         });
         this.pistonDeltasGameTime = safe.getLongOr("piston_deltas_game_time", this.pistonDeltasGameTime);
         this.noPhysics = safe.getBooleanOr("no_physics", this.noPhysics);
+        //? if >=1.21.6 {
         this.requiresPrecisePosition = safe.getBooleanOr("requires_precise_position", this.requiresPrecisePosition);
+        //?}
         this.moveDist = safe.getFloatOr("move_dist", this.moveDist);
         this.flyDist = safe.getFloatOr("fly_dist", this.flyDist);
         this.isInPowderSnow = safe.getBooleanOr("in_powder_snow", this.isInPowderSnow);

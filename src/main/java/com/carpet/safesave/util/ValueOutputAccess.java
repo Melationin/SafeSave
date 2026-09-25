@@ -1,5 +1,6 @@
 package com.carpet.safesave.util;
 
+//? if >=1.21.6 {
 import net.minecraft.world.level.storage.ValueOutput;
 import org.jspecify.annotations.Nullable;
 
@@ -9,3 +10,4 @@ public interface ValueOutputAccess
         throw new AssertionError("Implemented in Mixin");
     }
 }
+//?}

@@ -2,13 +2,19 @@ package com.carpet.safesave.mixin.blockentity;
 
 import com.carpet.safesave.safesave.blockentity.PistonManager;
 import com.carpet.safesave.safesave.blockentity.PistonOrderHolder;
+import com.carpet.safesave.util.NbtView;
 import com.carpet.safesave.util.SafeSaveNbt;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
+//? if <1.21.6 {
+/*import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+*///?} else {
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
+//?}
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -66,12 +72,23 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
         this.SS$order = PistonManager.nextPistonOrder();
     }
 
+    // 1.21.5 passes the tag plus a HolderLookup.Provider; 1.21.6+ writes into a ValueOutput.
     @Inject(method = "saveAdditional", at = @At("TAIL"))
-    private void save(final ValueOutput output, final CallbackInfo ci) {
+    private void save(final
+                      //? if <1.21.6 {
+                      /*CompoundTag
+                      *///?} else {
+                      ValueOutput
+                      //?}
+                              output,
+                      //? if <1.21.6 {
+                      /*final HolderLookup.Provider registries,
+                      *///?}
+                      final CallbackInfo ci) {
         if (!SafeSaveNbt.enabled()) {
             return;
         }
-        ValueOutput tag = SafeSaveNbt.child(output);
+        NbtView.Writer tag = SafeSaveNbt.child(NbtView.writer(output));
         tag.putFloat("progress", this.progress);
         tag.putFloat("progress_o", this.progressO);
         tag.putLong("lastTicked", this.lastTicked);
@@ -85,11 +102,21 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
     }
 
     @Inject(method = "loadAdditional", at = @At("TAIL"))
-    private void carpetExample$load(final ValueInput input, final CallbackInfo ci) {
+    private void carpetExample$load(final
+                                    //? if <1.21.6 {
+                                    /*CompoundTag
+                                    *///?} else {
+                                    ValueInput
+                                    //?}
+                                            input,
+                                    //? if <1.21.6 {
+                                    /*final HolderLookup.Provider registries,
+                                    *///?}
+                                    final CallbackInfo ci) {
         if (!SafeSaveNbt.enabled()) {
             return;
         }
-        ValueInput tag = SafeSaveNbt.childOrNull(input);
+        NbtView.Reader tag = SafeSaveNbt.childOrNull(NbtView.reader(input));
         if (tag != null) {
             float savedProgress = tag.getFloatOr("progress", Float.NaN);
             if (!Float.isNaN(savedProgress)) {

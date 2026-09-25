@@ -1,10 +1,15 @@
 package com.carpet.safesave.mixin.entity;
 
+import com.carpet.safesave.util.NbtView;
 import com.carpet.safesave.util.SafeSaveNbt;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.item.FallingBlockEntity;
+//? if <1.21.6 {
+/*import net.minecraft.nbt.CompoundTag;
+*///?} else {
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
+//?}
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -25,21 +30,33 @@ public abstract class FallingBlockEntityMixin {
     public abstract void setStartPos(BlockPos pos);
 
     @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
-    private void save(final ValueOutput output, final CallbackInfo ci) {
+    private void save(final
+                      //? if <1.21.6 {
+                      /*CompoundTag
+                      *///?} else {
+                      ValueOutput
+                      //?}
+                              output, final CallbackInfo ci) {
         if (!SafeSaveNbt.enabled()) {
             return;
         }
-        ValueOutput safe = SafeSaveNbt.child(output);
+        NbtView.Writer safe = SafeSaveNbt.child(NbtView.writer(output));
         safe.putBoolean("force_tick_after_teleport_to_duplicate", this.forceTickAfterTeleportToDuplicate);
         safe.store("start_pos", BlockPos.CODEC, this.getStartPos());
     }
 
     @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
-    private void load(final ValueInput input, final CallbackInfo ci) {
+    private void load(final
+                      //? if <1.21.6 {
+                      /*CompoundTag
+                      *///?} else {
+                      ValueInput
+                      //?}
+                              input, final CallbackInfo ci) {
         if (!SafeSaveNbt.enabled()) {
             return;
         }
-        ValueInput safe = SafeSaveNbt.childOrNull(input);
+        NbtView.Reader safe = SafeSaveNbt.childOrNull(NbtView.reader(input));
         if (safe == null) {
             return;
         }
