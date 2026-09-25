@@ -72,7 +72,6 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
         this.SS$order = PistonManager.nextPistonOrder();
     }
 
-    // 1.21.5 passes the tag plus a HolderLookup.Provider; 1.21.6+ writes into a ValueOutput.
     @Inject(method = "saveAdditional", at = @At("TAIL"))
     private void save(final
                       //? if <1.21.6 {

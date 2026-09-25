@@ -109,7 +109,6 @@ public final class ScheduledTickManager {
                         entry.typeId(), entry.x(), entry.y(), entry.z());
                 continue;
             }
-            // 1.21.2 renamed Registry#get(ResourceLocation) to Registry#getValue(ResourceLocation).
             //? if <1.21.2 {
             /*T type = registry.get(id);
             *///?} else {

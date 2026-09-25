@@ -29,9 +29,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 
 //? if <1.21.2 {
-/*// 1.21.2 split chunk serialization into SerializableChunkData; 1.21.1 still writes straight
-// through ChunkSerializer, whose write() receives the live chunk, so the safe-save tag is computed
-// and merged in a single step there instead of being carried on a data object between phases.
+/*// 1.21.2 才把区块序列化拆成 SerializableChunkData。1.21.1 仍走 ChunkSerializer，其 write()
+// 直接拿得到活 chunk，所以这里一步算完，不必像新版那样靠数据对象在两阶段之间传递。
 @Mixin(ChunkSerializer.class)
 public abstract class SerializableChunkDataMixin {
 
@@ -69,7 +68,6 @@ public abstract class SerializableChunkDataMixin implements SerializableChunkDat
         this.SS$safeSaveTag = tag;
     }
 
-    // 1.21.9 replaced the RegistryAccess parameter with a PalettedContainerFactory.
     @Inject(method = "parse", at = @At("HEAD"))
     private static void SS$onParse(final LevelHeightAccessor levelHeight,
                                    //? if <1.21.9 {

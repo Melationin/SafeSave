@@ -88,7 +88,6 @@ public final class BlockEventManager {
             long next = levelState.nextBlockEventOrder;
             int restored = 0;
             for (SafeBlockEvent entry : valid) {
-                // 1.21.2 renamed Registry#get(ResourceLocation) to Registry#getValue(ResourceLocation).
                 //? if <1.21.2 {
                 /*Block block = BuiltInRegistries.BLOCK.get(Identifier.tryParse(entry.blockId()));
                 *///?} else {

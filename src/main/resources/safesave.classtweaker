@@ -10,17 +10,15 @@ accessible method net/minecraft/server/level/ChunkMap processUnloads (Ljava/util
 accessible method net/minecraft/server/level/ChunkMap saveAllChunks (Z)V
 accessible field net/minecraft/world/ticks/LevelTicks allContainers Lit/unimi/dsi/fastutil/longs/Long2ObjectMap;
 
-# 1.21.5 replaced the ticket system: TicketStorage and the ChunkTracker-based DistanceManager only
-# exist from there on. On 1.21.4 StartupChunkRecovery goes through DistanceManager#addTicket and
-# DistanceManager#inBlockTickingRange/inEntityTickingRange instead, which are already public.
+# 1.21.5 起票据由 TicketStorage 与 ChunkTracker 版的 DistanceManager 管理；1.21.4 走
+# DistanceManager#addTicket 与 inBlockTickingRange/inEntityTickingRange（已是 public）。
 #? if >=1.21.5 {
 accessible field net/minecraft/server/level/ServerChunkCache ticketStorage Lnet/minecraft/world/level/TicketStorage;
 accessible field net/minecraft/server/level/DistanceManager simulationChunkTracker Lnet/minecraft/server/level/SimulationChunkTracker;
 accessible field net/minecraft/server/level/SimulationChunkTracker chunks Lit/unimi/dsi/fastutil/longs/Long2ByteMap;
 #?}
 
-# TagValueOutput only exists from 1.21.6 on. 1.21.5 needs none of it: CompoundTag#getCompound
-# already returns the live nested tag, which is what NbtView.TagWriterView uses instead.
+# TagValueOutput 只在 1.21.6 及以后存在；1.21.5 直接用 CompoundTag#getCompound 取活子标签。
 #? if >=1.21.6 {
 accessible field net/minecraft/world/level/storage/TagValueOutput output Lnet/minecraft/nbt/CompoundTag;
 accessible method net/minecraft/world/level/storage/TagValueOutput <init> (Lnet/minecraft/util/ProblemReporter;Lcom/mojang/serialization/DynamicOps;Lnet/minecraft/nbt/CompoundTag;)V
@@ -28,10 +26,9 @@ accessible method net/minecraft/world/level/storage/TagValueOutput <init> (Lnet/
 inject-interface net/minecraft/world/level/storage/TagValueOutput com/carpet/safesave/util/ValueOutputAccess
 #?}
 
-# Up to 1.21.4 CompoundTag only has the raw accessors; TagCompatAccess supplies the 1.21.5
-# convenience API (getIntOr, getStringOr, getListOrEmpty, store, read, ...) on top of them.
-# The body is '#'-commented because this source tree is the 26.1 node (vcsVersion), where the
-# branch is inactive; stonecutter uncomments it for the 1.21.4-and-below nodes.
+# 1.21.4 及更早的 CompoundTag 只有原始访问器，TagCompatAccess 在其上补出 1.21.5 的便捷 API。
+# body 用 '#' 注释是因为本源码树是 26.1 节点（vcsVersion），该分支在此不成立；
+# 生成 1.21.4 及更早的节点时 stonecutter 会取消注释。
 #? if <1.21.5 {
 #inject-interface net/minecraft/nbt/CompoundTag com/carpet/safesave/util/TagCompatAccess
 #?}

@@ -118,8 +118,7 @@ public final class SafeSaveManager {
         return root;
     }
 
-    // 1.21.1: ChunkSerializer#write takes the live chunk, so there is no two-phase hand-off and the
-    // tag is computed here directly.
+    // 1.21.1: ChunkSerializer#write 直接拿得到活 chunk，没有两阶段交接，tag 就地算完。
     public static CompoundTag injectChunkData(final ServerLevel level,
                                               final ChunkAccess chunk,
                                               final CompoundTag root) {

@@ -26,7 +26,6 @@ public final class SafeSaveFiles {
 
     public static final String FILE_NAME = "safesave.dat";
 
-    // 路径由 DimensionType.getStorageFolder 决定，见 loadAll 的说明。
     private static final List<ResourceKey<Level>> VANILLA_DIMENSIONS =
             List.of(Level.OVERWORLD, Level.END, Level.NETHER);
 
@@ -44,13 +43,10 @@ public final class SafeSaveFiles {
         int loadedFiles = 0;
 
         /*
-          读侧必须走与写侧同一个函数（dimensionDataDir -> DimensionType.getStorageFolder），
-          否则文件写了也读不回来：该函数把原版三维度映射到 <root>（主世界）、<root>/DIM1（末地）、
-          <root>/DIM-1（下界），只有自定义维度才落在 <root>/dimensions/<命名空间>/<路径> 下。
-          这里曾经只扫 dimensions/，于是原版维度的 safesave.dat 永远找不到，启动屏障形同虚设。
-
-          本方法在 onServerLoaded 里调用，此时 ServerLevel 尚未创建，所以只能用维度键而不是
-          遍历 level 来还原路径。
+          必须与写侧走同一个函数：DimensionType.getStorageFolder 把原版三维度映射到 <root> /
+          <root>/DIM1 / <root>/DIM-1，只有自定义维度才落在 dimensions/ 下。这里曾只扫 dimensions/，
+          于是原版维度的文件永远读不回来。
+          本方法在 onServerLoaded 调用，ServerLevel 尚未创建，所以只能用维度键还原路径。
          */
         for (ResourceKey<Level> dimension : VANILLA_DIMENSIONS) {
             Path file = DimensionType.getStorageFolder(dimension, root).resolve("data").resolve(FILE_NAME);

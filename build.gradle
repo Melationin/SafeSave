@@ -17,15 +17,12 @@ plugins {
 }
 
 def minecraftVer = stonecutter.current.version
-// 该节点代表的受支持版本范围（同一 API 纪元），用于产物名；取自 versions/<ver>/gradle.properties。
-// 例如节点 26.1 的 version_range=26.1-26.2，产出 safesave-26.1-26.2-<modVer>.jar。
 def versionRange = project.findProperty("version_range") ?: minecraftVer
 
 version = project.mod_version
 group = project.maven_group
 
-// 26.1+ ships official (Mojang) names natively -> plain fabric-loom.
-// Everything older is remapped from official -> intermediary -> plain fabric-loom-remap.
+// 26.1+ 原生使用官方(Mojang)名；更早的版本走 official -> intermediary 重映射。
 def modern = stonecutter.eval(minecraftVer, ">=26.1")
 if (modern) {
     apply plugin: 'net.fabricmc.fabric-loom'
@@ -47,34 +44,27 @@ repositories {
     mavenCentral()
 }
 
-// 1.21.11 renamed the whole resource-id API family and moved the minecart base class
-// into a dedicated subpackage.
 def pre12111 = stonecutter.eval(minecraftVer, "<1.21.11")
-// 26.x is remapped natively, so its access widener stays in the "official" namespace;
-// every older node resolves "named" instead.
+// 26.x 原生重映射，AW 保持 official 命名空间；更早的节点解析成 named。
 def pre261 = !modern
-// Stonecutter 0.7.x has reduced Groovy DSL support: the builder must be an explicit
-// closure parameter, a delegated no-arg closure resolves its calls against the extension.
-// Every rule below must be a string that does NOT occur in the 26.x sources, otherwise
-// the reverse pass (applied to the newer nodes) would undo it there.
+// Groovy 闭包必须写成显式参数形式，无参闭包会把调用解析到外层 extension。
+// 每条规则的 from 字符串都不能出现在 26.x 源码里，否则套用到新节点时会反向改坏。
 def legacyAW = { b -> b.replace("classTweaker  v1  official", "classTweaker v1 named") }
 def legacyIds = { b ->
     b.replace("net.minecraft.world.entity.vehicle.minecart.AbstractMinecart",
             "net.minecraft.world.entity.vehicle.AbstractMinecart")
     b.replace("net.minecraft.resources.Identifier", "net.minecraft.resources.ResourceLocation")
-    // bare simple name too: Identifier.tryParse(...) / "Identifier id = ..."
+    // 裸类名也要换：Identifier.tryParse(...) / "Identifier id = ..."
     b.replace("Identifier", "ResourceLocation")
 }
 
 stonecutter {
-    // the header literal in the source file uses two spaces, hence the doubled spaces above
+    // 源文件里的表头字面量用了两个空格，所以上面也写两个
     replacements.string(pre261, legacyAW)
     replacements.string(pre12111, legacyIds)
 }
 
-// Stonecutter materialises a per-node copy of the access widener (the .classtweaker handler
-// is inherited from "yml" in stonecutter.gradle). The file name is kept identical to the one
-// declared in fabric.mod.json, because loom copies it into the jar under that very name.
+// 文件名必须与 fabric.mod.json 里声明的一致：loom 按该名字把它复制进 jar。
 def awFile = sc.process(rootProject.file("src/main/resources/safesave.classtweaker"),
         ".gradle/aw/safesave.classtweaker")
 
@@ -98,8 +88,7 @@ loom {
         serverMixinAudit {
             server()
             vmArgs auditVmArgs
-            // Isolated from the shared run/ directory: that one carries whatever mods the
-            // developer happens to play with, and they are version-locked to one node.
+            // 与共享的 run/ 隔离：那里带着开发者自己玩的 mod，且锁定在某个版本。
             runDir "../../run-mixinaudit"
             ideConfigGenerated false
         }
@@ -117,7 +106,7 @@ dependencies {
     if (!modern) {
         mappings loom.officialMojangMappings()
         modImplementation "net.fabricmc:fabric-loader:${property("loader_version")}"
-        // 1.21.x does not pull jspecify in transitively; 26.x does.
+        // 1.21.x 不会传递依赖 jspecify；26.x 会。
         compileOnly "org.jspecify:jspecify:1.0.0"
     } else {
         implementation "net.fabricmc:fabric-loader:${property("loader_version")}"
@@ -135,14 +124,8 @@ processResources {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Mixin audit gate.
-// The audit runs inside the game (-Dsafesave.mixin_audit=true, see
-// AutoMixinAuditExecutor) and exits the JVM with its verdict. Fabric, however,
-// logs a failed startup and still lets the process exit with code 0, so the exit
-// value alone cannot be trusted. The run task is therefore required to produce
-// the audit's own success marker; anything else fails the build.
-// ---------------------------------------------------------------------------
+// 审计在游戏内运行并以退出码给出结论，但 Fabric 启动失败时进程仍退出 0，所以只看退出码不可靠：
+// 必须出现审计自己的成功标记，否则视为失败。
 tasks.matching { it.name == "runServerMixinAudit" || it.name == "runClientMixinAudit" }.configureEach { t ->
     def auditLog = new File(layout.buildDirectory.get().asFile, "mixin-audit-${t.name}.log")
     t.ignoreExitValue = true

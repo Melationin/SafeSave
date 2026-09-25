@@ -32,9 +32,7 @@ public final class StartupChunkRecovery {
     // 不注册进 BuiltInRegistries.TICKET_TYPE（该表在 main 入口点之前就已冻结）：本类型无 FLAG_PERSIST，
     // TicketStorage 从不查注册表，Ticket.CODEC 与 toString() 都用不到未注册类型。
     //? if <1.21.5 {
-    /*// 1.21.4 的票据系统完全不同：TicketType 是带 Comparator 的类，没有 TicketStorage，
-    // 票据由 DistanceManager#addTicket/removeTicket(TicketType, ChunkPos, int, T) 管理。
-    private static final TicketType<Unit> STARTUP_LOAD =
+    /*private static final TicketType<Unit> STARTUP_LOAD =
             TicketType.create("safesave_startup_load", (first, second) -> 0);
     *///?} else {
     // 1.21.9 把 TicketType 从 (timeout, persist, TicketUse) 记录改成了位标志；
@@ -50,6 +48,11 @@ public final class StartupChunkRecovery {
 
     private StartupChunkRecovery() {}
 
+    // 两次采集间世界时间增量不超过此值时，区块集合的收缩只可能是卸载造成的假象，而非世界真的变小，
+    // 此时对上一次的清单取并集；超过才整体替换，否则清单会跨会话无限累积。
+    // （暂停中 getGameTime() 不推进，所以"暂停保存 -> 关服"的间隔天然是 0。）
+    private static final long UNION_WINDOW_TICKS = 10;
+
     public static void arm(MinecraftServer server, SafeSaveSession session) {
         // 超时为 0 时完全不设屏障：不冻结，也不挂载入票。
         if (SafeSaveConfig.unfreezeTimeout <= 0) {
@@ -60,9 +63,8 @@ public final class StartupChunkRecovery {
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveStore.DimensionData saved = session.store.dimensionOrNull(dimensionId(level));
             if (saved == null) continue;
-            // 只数 31/32：下面挂票时同一批条目会被再过滤一次，两处必须口径一致，否则
-            // total 与 update() 里的 loadStatus().total 不等，会在第一个 tick 就判定"全部加载完"
-            // 而立刻解冻。
+            // 只数 31/32：挂票时同一批条目会被再过滤一次，两处口径必须一致，否则第一个 tick 就会
+            // 判定"全部加载完"而立刻解冻。
             for (Long2ByteMap.Entry entry : saved.tickingChunks.long2ByteEntrySet()) {
                 if (entry.getByteValue() == 31 || entry.getByteValue() == 32) total++;
             }
@@ -149,21 +151,16 @@ public final class StartupChunkRecovery {
                 }
             }
             source.runDistanceManagerUpdates();
-            Long2ByteOpenHashMap levels = new Long2ByteOpenHashMap();
+            Long2ByteOpenHashMap fresh = new Long2ByteOpenHashMap();
             //? if <1.21.5 {
-            /*// 1.21.4 没有 SimulationChunkTracker。DistanceManager 借 TickingTracker 回答同一个问题：
-            //   inEntityTickingRange -> 区块层级 <= 31（实体刻）
-            //   inBlockTickingRange  -> 区块层级 <= 32（仅方块刻）
-            // 实体刻是方块刻的子集，必须先判实体刻；存进去的 31/32 与 SafeSaveStore 的
-            // ENTITY_TICKING_CHUNKS / BLOCK_TICKING_CHUNKS 两个数组含义一致（31 = 实体刻）。
-            // visibleChunkMap 的 key 本身就是区块坐标。
+            /*// 层级 31 = 实体刻、32 = 仅方块刻，实体刻是方块刻的子集，所以必须先判实体刻。
             DistanceManager distanceManager = source.chunkMap.getDistanceManager();
             for (Long2ObjectMap.Entry<ChunkHolder> holder : source.chunkMap.visibleChunkMap.long2ObjectEntrySet()) {
                 long key = holder.getLongKey();
                 if (distanceManager.inEntityTickingRange(key)) {
-                    levels.put(key, (byte) 31);
+                    fresh.put(key, (byte) 31);
                 } else if (distanceManager.inBlockTickingRange(key)) {
-                    levels.put(key, (byte) 32);
+                    fresh.put(key, (byte) 32);
                 }
             }
             *///?} else {
@@ -171,14 +168,43 @@ public final class StartupChunkRecovery {
                     .simulationChunkTracker.chunks.long2ByteEntrySet()) {
                 byte simulationLevel = entry.getByteValue();
                 if (simulationLevel <= 32) {
-                    levels.put(entry.getLongKey(), simulationLevel <= 31 ? (byte)31 : (byte)32);
+                    fresh.put(entry.getLongKey(), simulationLevel <= 31 ? (byte)31 : (byte)32);
                 }
             }
             //?}
             SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
+            long now = level.getGameTime();
+            Long2ByteOpenHashMap levels = fresh;
+            if (state.tickingSnapshotAvailable
+                    && now - state.lastTickingCaptureGameTime <= UNION_WINDOW_TICKS) {
+                levels = union(state.tickingChunksAtTickEnd, fresh);
+                if (levels.size() != state.tickingChunksAtTickEnd.size()) {
+                    DebugLog.info("{}: ticking list changed within {} tick(s) of the previous capture ({} -> {}); "
+                                    + "kept the union of {} chunk(s)",
+                            dimensionId(level), UNION_WINDOW_TICKS,
+                            state.tickingChunksAtTickEnd.size(), fresh.size(), levels.size());
+                }
+            }
             state.tickingChunksAtTickEnd = levels;
+            state.lastTickingCaptureGameTime = now;
             state.tickingSnapshotAvailable = true;
         }
+    }
+
+    // 同一区块两次分类不同时取更小的那个：31（实体刻）比 32（仅方块刻）更强。
+    private static Long2ByteOpenHashMap union(final Long2ByteOpenHashMap previous,
+                                              final Long2ByteOpenHashMap fresh) {
+        Long2ByteOpenHashMap merged = new Long2ByteOpenHashMap(previous);
+        for (Long2ByteMap.Entry entry : fresh.long2ByteEntrySet()) {
+            long key = entry.getLongKey();
+            byte value = entry.getByteValue();
+            if (merged.containsKey(key)) {
+                merged.put(key, (byte) Math.min(merged.get(key), value));
+            } else {
+                merged.put(key, value);
+            }
+        }
+        return merged;
     }
 
     private static LoadStatus loadStatus(MinecraftServer server) {
@@ -233,8 +259,6 @@ public final class StartupChunkRecovery {
 
     private record LoadStatus(int total, int loaded) {}
 
-    // 1.21.5 起票据由 TicketStorage 按 (区块坐标, Ticket) 直接存取；1.21.4 走
-    // DistanceManager#addTicket/removeTicket(TicketType, ChunkPos, int level, T value)。
     private static void addStartupTicket(ServerLevel level, long chunkPos, byte ticketLevel) {
         //? if <1.21.5 {
         /*level.getChunkSource().chunkMap.getDistanceManager()

@@ -14,21 +14,8 @@ import java.util.Optional;
 */
 //?}
 
-/**
- * Gives {@code CompoundTag} the convenience API that 1.21.5 added to it natively, on 1.21.4 and
- * older.
- *
- * <p>1.21.5 grew {@code getIntOr} / {@code getStringOr} / {@code getListOrEmpty} / {@code store} /
- * {@code read} on {@code CompoundTag}; before that only the raw accessors existed. Rather than fork
- * every call site, this interface is injected into {@code CompoundTag} through the access widener on
- * those versions only, so the same {@code tag.getIntOr(...)} source compiles everywhere.
- *
- * <p>1.21.5+ never loads it: {@code CompoundTag} already has all of these, and a mixin interface
- * whose default methods are shadowed by real class methods would only add confusion.
- *
- * <p>The base methods below are declared so the defaults can call them; {@code CompoundTag} already
- * implements every one of them.
- */
+// 1.21.5 给 CompoundTag 加了 getIntOr/getStringOr/getListOrEmpty/store/read；更早的版本只有原始
+// 访问器，所以由这里补出来，并用 access widener 把接口注入 CompoundTag。1.21.5+ 既不需要也不加载。
 //? if <1.21.5 {
 /*public interface TagCompatAccess {
 

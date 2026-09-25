@@ -12,24 +12,10 @@ import net.minecraft.world.level.storage.ValueOutput;
 /*import net.minecraft.nbt.CompoundTag;
 *///?}
 
-
-/**
- * The single NBT surface the mod persists through, on every supported Minecraft version.
- *
- * <p>1.21.6 extracted {@code ValueInput}/{@code ValueOutput} out of {@code CompoundTag}, and the
- * convenience methods the mod actually uses - {@code putInt}, {@code getIntOr},
- * {@code store(String, Codec, T)}, {@code read(String, Codec)} - exist on <em>both</em> under the
- * same names. 1.21.5 therefore does not need a second persistence backend: everything goes through
- * this view and the only version-dependent part left at the call sites is the injected parameter
- * type of the mixins.
- *
- * <p>Usage stays symmetrical with the old code:
- * {@code SafeSaveNbt.child(NbtView.writer(output))} /
- * {@code SafeSaveNbt.childOrNull(NbtView.reader(input))}.
- */
+// 1.21.6 才从 CompoundTag 抽出 ValueInput/ValueOutput，两者方法同名，因此一套视图即可通吃所有版本；
+// 版本差异只剩 mixin 注入参数的类型。
 public interface NbtView {
 
-    /** Write side: the subset of {@code ValueOutput} the mod uses. */
     interface Writer {
         void putInt(String key, int value);
 
@@ -46,7 +32,6 @@ public interface NbtView {
         Writer child(String key);
     }
 
-    /** Read side: the subset of {@code ValueInput} the mod uses. */
     interface Reader {
         int getIntOr(String key, int fallback);
 
@@ -121,12 +106,8 @@ final class ValueWriterView implements NbtView.Writer {
         this.output.store(key, codec, value);
     }
 
-    /*
-      TagValueOutput#child always allocates a fresh CompoundTag and puts it into the parent slot,
-      overwriting whatever was there. Entity#saveWithoutId and addAdditionalSaveData are both
-      hooked and both write into "safeSave", so a plain child() call would wipe what the outer hook
-      already wrote. Reusing an existing child is the only reason ValueOutputAccess exists.
-     */
+    // TagValueOutput#child 每次都新建 tag 并覆盖父槽，而 saveWithoutId 与 addAdditionalSaveData 都往
+    // "safeSave" 写，直接 child() 会把另一个 hook 写的内容冲掉。这是 ValueOutputAccess 存在的唯一原因。
     @Override
     public NbtView.Writer child(final String key) {
         if (this.output instanceof TagValueOutput tagOutput) {
@@ -191,8 +172,6 @@ final class ValueReaderView implements NbtView.Reader {
         this.tag = tag;
     }
 
-    // 1.21.5: the CompoundTag already is the backing store, and getCompound returns the live
-    // nested tag from the map instead of a copy, so reusing it is all that is needed here.
     private static CompoundTag liveChild(final CompoundTag tag, final String key) {
         CompoundTag existing = TagCompat.childOrNull(tag, key);
         if (existing != null) {

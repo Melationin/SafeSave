@@ -22,7 +22,6 @@ public abstract class AbstractMinecartMixin {
 
     @Shadow
     private boolean onRails;
-
     @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
     private void save(final
                       //? if <1.21.6 {

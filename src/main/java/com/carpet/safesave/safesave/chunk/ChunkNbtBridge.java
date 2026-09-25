@@ -54,7 +54,7 @@ public final class ChunkNbtBridge {
         if (!(chunk instanceof LevelChunk levelChunk)) {
             return null;
         }
-        // Before rebuild, persist the original snapshot rather than the incomplete live containers.
+        // 重建前先落原始快照，而不是尚未完整的实时容器。
         SafeSaveStore.ChunkSnapshot snapshot = ChunkSnapshotManager.forSave(level, levelChunk, levelState);
         if (snapshot == null) return null;
 

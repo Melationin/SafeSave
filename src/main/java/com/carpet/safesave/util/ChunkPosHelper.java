@@ -3,15 +3,6 @@ package com.carpet.safesave.util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
 
-/**
- * The chunk-position packing API was renamed in 26.1:
- * <ul>
- *     <li>{@code ChunkPos.asLong(int, int)} / {@code asLong(BlockPos)} / {@code pos.toLong()}
- *     became {@code ChunkPos.pack(int, int)} / {@code pack(BlockPos)} / {@code pos.pack()}</li>
- *     <li>{@code new ChunkPos(long)} became {@code ChunkPos.unpack(long)}</li>
- * </ul>
- * Every call site goes through this helper so the difference lives in exactly one file.
- */
 public final class ChunkPosHelper {
     private ChunkPosHelper() {
     }

@@ -52,7 +52,7 @@ public final class PistonManager {
         long generation = session.pistonOrderGeneration.get();
         if (levelState.pistonOrderRebuiltAt < generation) {
             levelState.pistonOrderRebuiltAt = generation;
-            // Includes chunks revived before physical unload, whose NBT load hook never fires.
+            // 包含物理卸载前被复活的区块，它们的 NBT 加载钩子不会触发。
             for (var ticker : level.blockEntityTickers) {
                 if (ticker.isRemoved()) continue;
                 // 锂 sleeping 的哨兵 ticker 恒返回 pos == null 且 isRemoved() == false，必须先取出判空。

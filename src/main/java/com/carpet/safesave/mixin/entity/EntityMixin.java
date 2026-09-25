@@ -65,7 +65,6 @@ public abstract class EntityMixin implements EntityOrderHolder
     @Shadow
     public boolean noPhysics;
 
-    // 1.21.5 has no such field on Entity; it appeared in 1.21.6.
     //? if >=1.21.6 {
     @Shadow
     private boolean requiresPrecisePosition;
@@ -110,7 +109,6 @@ public abstract class EntityMixin implements EntityOrderHolder
 
 
 
-    // 1.21.5 takes and returns the tag itself; 1.21.6+ writes into a ValueOutput and returns void.
     @Inject(method = "saveWithoutId", at = @At("TAIL"))
     private void save(final
                       //? if <1.21.6 {
@@ -149,9 +147,7 @@ public abstract class EntityMixin implements EntityOrderHolder
         NbtView.Writer finalSafe = safe;
         this.mainSupportingBlockPos.ifPresent(pos -> finalSafe.store("main_supporting_block_pos", BlockPos.CODEC, pos));
         safe.putBoolean("on_ground_no_blocks", this.onGroundNoBlocks);
-        // Pose only became a StringRepresentable with a codec in 1.21.9. The codec writes the
-        // lower-case serialized name, so the legacy branch spells that out by hand to keep the
-        // stored format identical.
+        // Pose.CODEC 写出的是小写序列化名，旧版分支手写同样的形式以保持存档格式一致。
         //? if <1.21.9 {
         /*safe.putString("pose", this.getPose().name().toLowerCase(Locale.ROOT));
         *///?} else {

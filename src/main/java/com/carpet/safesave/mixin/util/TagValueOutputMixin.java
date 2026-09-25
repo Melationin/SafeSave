@@ -41,9 +41,8 @@ public abstract class TagValueOutputMixin implements ValueOutputAccess
 /*import net.minecraft.nbt.CompoundTag;
 import org.spongepowered.asm.mixin.Mixin;
 
-// 1.21.5 has no TagValueOutput at all: CompoundTag#getCompound already hands back the live child
-// tag, so NbtView.TagView needs no help. The class stays registered as an empty mixin so the mixin
-// list (and the access widener) does not have to be version-dependent.
+// 1.21.5 没有 TagValueOutput，直接用 CompoundTag#getCompound 取活子标签，
+// 所以那里保持空 mixin，让 mixin 清单与版本无关。
 @Mixin(CompoundTag.class)
 public abstract class TagValueOutputMixin {
 }

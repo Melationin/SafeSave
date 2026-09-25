@@ -23,8 +23,6 @@ public final class SafeSaveCommand {
 
     public static void register(final CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("safesave")
-                // 1.21.11 turned Commands.LEVEL_* into PermissionCheck values and added
-                // Commands#hasPermission; before that they were plain ints checked on the source.
                 //? if <1.21.11 {
                 /*.requires(source -> source.hasPermission(Commands.LEVEL_ADMINS))
                 *///?} else {

@@ -21,8 +21,8 @@ public final class SafeSaveLevelState {
 
     public boolean staleWarned;
 
-    // Vanilla can save/unload chunks inside ServerLevel.tick. Defer those writes until
-    // the server-tick-end snapshot has been placed on each LevelChunk.
+    // 原版会在 ServerLevel.tick 内部保存/卸载区块。把这些写入推迟到服务端 tick 末的快照
+    // 落到每个 LevelChunk 之后。
     public boolean worldTickRunning;
     public int completedWorldTick = Integer.MIN_VALUE;
     public boolean deferredUnloads;
@@ -31,10 +31,12 @@ public final class SafeSaveLevelState {
 
     public final OrderSequence entityOrder = new OrderSequence();
 
-    // Simulation levels 31/32 as of the last save.
+    // 上次保存时的模拟层级 31/32。
     public Long2ByteOpenHashMap tickingChunksAtTickEnd = new Long2ByteOpenHashMap();
     public boolean tickingSnapshotAvailable;
+    // 上次采集时的 gameTime，用于区分真实变化与卸载造成的假象。
+    public long lastTickingCaptureGameTime = Long.MIN_VALUE;
 
-    // Loading-only tickets restored from the previous side-file save.
+    // 从上一份 side file 恢复出来的、仅用于加载的票据。
     public final Long2ByteOpenHashMap startupTickets = new Long2ByteOpenHashMap();
 }
