@@ -6,7 +6,7 @@
   "name": "SafeSave",
   "description": "Lossless persistence of scheduled ticks and block events across a server restart, plus tick/block-event/world-tick debug instrumentation.",
   "authors": [
-    "You"
+    "Melationin"
   ],
   "contact": {},
 
