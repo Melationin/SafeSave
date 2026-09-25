@@ -54,7 +54,6 @@ public final class ScheduledTickManager {
                                          final Object fluidContainer,
                                          final SafeSaveSession session,
                                          final SafeSaveLevelState levelState) {
-        String dimension = dimensionId(level);
         warnIfStale(level, session, levelState);
         long currentGameTime = level.getGameTime();
         int keptBlock = applyTicks((TickContainerAccess<Block>) blockContainer, snapshot.blockTicks(),
@@ -63,10 +62,12 @@ public final class ScheduledTickManager {
         int keptFluid = applyTicks((TickContainerAccess<Fluid>) fluidContainer, snapshot.fluidTicks(),
                 BuiltInRegistries.FLUID, ((SafeTickContainer) fluidContainer).SS$snapshotQueue(),
                 snapshot.snapshotGameTime(), currentGameTime, session);
-        DebugLog.debug("{} {}: restored {} block + {} fluid tick(s) (expired ticks rebased from gameTime {}; kept {} pre-existing)",
-                dimension, ChunkPos.unpack(packedChunkPos),
-                snapshot.blockTicks().size(), snapshot.fluidTicks().size(),
-                snapshot.snapshotGameTime(), keptBlock + keptFluid);
+        if (DebugLog.DEBUG) {
+            DebugLog.debug("{} {}: restored {} block + {} fluid tick(s) (expired ticks rebased from gameTime {}; kept {} pre-existing)",
+                    dimensionId(level), ChunkPos.unpack(packedChunkPos),
+                    snapshot.blockTicks().size(), snapshot.fluidTicks().size(),
+                    snapshot.snapshotGameTime(), keptBlock + keptFluid);
+        }
     }
 
 

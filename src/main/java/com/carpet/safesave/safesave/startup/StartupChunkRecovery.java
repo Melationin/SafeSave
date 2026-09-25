@@ -83,7 +83,7 @@ public final class StartupChunkRecovery {
                     && now - session.firstRealPlayerTick >= Math.max(0, SafeSaveConfig.unfreezeTimeout)) {
                 DebugLog.warn("startup chunk wait timed out: {}/{} loaded", status.loaded, status.total);
                 finish(server, session, "after the loading timeout");
-            } else if (now - session.startupLastLogTick >= 20) {
+            } else if (now - session.startupLastLogTick >= 100) {
                 session.startupLastLogTick = now;
                 DebugLog.info("startup chunk wait: {}/{} loaded", status.loaded, status.total);
             }

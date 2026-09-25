@@ -57,7 +57,9 @@ public final class EntityOrderManager {
         all.removeAll(affected);
         all.addAll(affected);
         ((EntityTickListAccess) list).SS$rebuildActive(all);
-        DebugLog.debug("{}: rebuilt cross-chunk tick order of {} entity(ies) in {} newly loaded chunk(s)",
-                dimensionId(level), affected.size(), newChunks.size());
+        if (DebugLog.DEBUG) {
+            DebugLog.debug("{}: rebuilt cross-chunk tick order of {} entity(ies) in {} newly loaded chunk(s)",
+                    dimensionId(level), affected.size(), newChunks.size());
+        }
     }
 }

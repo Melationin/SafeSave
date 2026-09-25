@@ -88,7 +88,7 @@ public final class ChunkRebuildCoordinator {
         }
 
         levelState.knownChunks = ready;
-        if (!candidates.isEmpty()) {
+        if (!candidates.isEmpty() && DebugLog.DEBUG) {
             DebugLog.debug("{}: rebuild tick start - {} chunk(s) to rebuild ({} newly loaded); {} rebuilt, {} tick(s) restored so far, {} dropped",
                     dimension, candidates.size(), newKeys.size(), rebuilt,
                     session.restoredTickCount.get(), session.droppedTickCount.get());

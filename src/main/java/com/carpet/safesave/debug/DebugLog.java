@@ -1,5 +1,6 @@
 package com.carpet.safesave.debug;
 
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.material.Fluid;
@@ -9,8 +10,17 @@ import org.slf4j.LoggerFactory;
 
 public final class DebugLog {
     private static final Logger LOG = LoggerFactory.getLogger("safesave");
+    
+    public static final boolean DEBUG = resolveDebug();
 
     private DebugLog() {
+    }
+
+    private static boolean resolveDebug() {
+        String override = System.getProperty("safesave.debug");
+        return override != null
+                ? Boolean.parseBoolean(override)
+                : FabricLoader.getInstance().isDevelopmentEnvironment();
     }
 
     public static String typeId(final Object type) {
@@ -28,6 +38,9 @@ public final class DebugLog {
     }
 
     public static void debug(final String format, final Object... args) {
+        if (!DEBUG) {
+            return;
+        }
         LOG.debug("[safe-save] " + format, args);
     }
 

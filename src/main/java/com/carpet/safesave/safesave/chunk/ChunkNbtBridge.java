@@ -24,7 +24,6 @@ public final class ChunkNbtBridge {
         if (session.store == null) {
             return;
         }
-        String dimension = dimensionId(level);
         long key = ChunkPos.pack(chunkData.getIntOr("xPos", 0), chunkData.getIntOr("zPos", 0));
         CompoundTag safeSave = chunkData.getCompound(KEY_SAFE_SAVE).orElse(null);
         if (safeSave == null) {
@@ -37,9 +36,11 @@ public final class ChunkNbtBridge {
             return;
         }
         levelState.pendingChunks.put(key, snapshot);
-        DebugLog.debug("{} {}: read {} block + {} fluid tick(s), {} block event(s) from chunk NBT",
-                dimension, ChunkPos.unpack(key),
-                snapshot.blockTicks().size(), snapshot.fluidTicks().size(), snapshot.blockEvents().size());
+        if (DebugLog.DEBUG) {
+            DebugLog.debug("{} {}: read {} block + {} fluid tick(s), {} block event(s) from chunk NBT",
+                    dimensionId(level), ChunkPos.unpack(key),
+                    snapshot.blockTicks().size(), snapshot.fluidTicks().size(), snapshot.blockEvents().size());
+        }
     }
 
     public static CompoundTag onChunkSerializing(final ServerLevel level, final ChunkAccess chunk,
