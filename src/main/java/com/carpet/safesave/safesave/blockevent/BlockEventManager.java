@@ -2,6 +2,7 @@ package com.carpet.safesave.safesave.blockevent;
 
 
 import com.carpet.safesave.debug.DebugLog;
+import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
@@ -41,7 +42,7 @@ public final class BlockEventManager {
                                                            final long packedChunkPos) {
         List<SafeBlockEvent> events = new ArrayList<>();
         for (BlockEventData event : level.blockEvents) {
-            if (ChunkPos.pack(event.pos()) != packedChunkPos) {
+            if (ChunkPosHelper.pack(event.pos()) != packedChunkPos) {
                 continue;
             }
             events.add(new SafeBlockEvent(

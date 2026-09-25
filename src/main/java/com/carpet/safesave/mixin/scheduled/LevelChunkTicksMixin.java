@@ -50,7 +50,7 @@ public abstract class LevelChunkTicksMixin implements SafeTickContainer {
     public void SS$replaceAll(final List<?> scheduledTicks) {
         LevelChunkTicks self = (LevelChunkTicks) (Object) this;
         // 原版 removeIf 只清 tickQueue、不同步去重集合，须补清；Lithium 版已同步清理并置空 ticksPerPosition。
-        this.removeIf(_->true);
+        this.removeIf(ignored -> true);
         if (this.ticksPerPosition != null) {
             this.ticksPerPosition.clear();
         }

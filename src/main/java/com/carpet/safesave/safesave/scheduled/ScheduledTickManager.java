@@ -2,6 +2,7 @@ package com.carpet.safesave.safesave.scheduled;
 
 
 import com.carpet.safesave.debug.DebugLog;
+import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
@@ -64,7 +65,7 @@ public final class ScheduledTickManager {
                 snapshot.snapshotGameTime(), currentGameTime, session);
         if (DebugLog.DEBUG) {
             DebugLog.debug("{} {}: restored {} block + {} fluid tick(s) (expired ticks rebased from gameTime {}; kept {} pre-existing)",
-                    dimensionId(level), ChunkPos.unpack(packedChunkPos),
+                    dimensionId(level), ChunkPosHelper.unpack(packedChunkPos),
                     snapshot.blockTicks().size(), snapshot.fluidTicks().size(),
                     snapshot.snapshotGameTime(), keptBlock + keptFluid);
         }

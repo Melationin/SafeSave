@@ -4,6 +4,7 @@ import static com.carpet.safesave.util.SafeSaveNbt.KEY_SAFE_SAVE;
 import static com.carpet.safesave.util.Util.dimensionId;
 
 import com.carpet.safesave.config.SafeSaveConfig;
+import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
 import com.carpet.safesave.safesave.chunk.ChunkNbtBridge;
 import com.carpet.safesave.safesave.chunk.ChunkRebuildCoordinator;
@@ -83,7 +84,7 @@ public final class SafeSaveManager {
     }
 
     public static void onChunkTagRead(final ServerLevel level, final CompoundTag chunkData) {
-        long key = ChunkPos.pack(chunkData.getIntOr("xPos", 0), chunkData.getIntOr("zPos", 0));
+        long key = ChunkPosHelper.pack(chunkData.getIntOr("xPos", 0), chunkData.getIntOr("zPos", 0));
         if (!capturesChunk(level, key)) {
             return;
         }
@@ -97,7 +98,7 @@ public final class SafeSaveManager {
     public static void onChunkSerializing(final ServerLevel level,
                                           final ChunkAccess chunk,
                                           final Object data) {
-        if (!capturesChunk(level, chunk.getPos().pack())) {
+        if (!capturesChunk(level, ChunkPosHelper.pack(chunk.getPos()))) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.current();

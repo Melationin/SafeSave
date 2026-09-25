@@ -1,6 +1,7 @@
 package com.carpet.safesave.safesave.chunk;
 
 import com.carpet.safesave.safesave.SafeSaveLevelState;
+import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.SafeSaveManager;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
@@ -14,7 +15,7 @@ public final class ChunkSnapshotManager {
 
     public static SafeSaveStore.ChunkSnapshot forSave(ServerLevel level, LevelChunk chunk,
                                                       SafeSaveLevelState state) {
-        long key = chunk.getPos().pack();
+        long key = ChunkPosHelper.pack(chunk.getPos());
         SafeSaveStore.ChunkSnapshot pending = state.pendingChunks.get(key);
         if (pending != null) return pending;
         // 世界 tick 进行中、或本服务器刻尚未结算时，现场队列不代表一个完整刻的状态；

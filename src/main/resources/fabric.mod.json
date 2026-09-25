@@ -15,6 +15,11 @@
   "license": "MIT",
   "icon": "icon.png",
   "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.carpet.safesave.SafeSaveMod"
+    ]
+  },
   "mixins": [
     "safesave.mixins.json"
   ],

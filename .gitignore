@@ -25,6 +25,7 @@ bin/
 
 # fabric
 run/
+run-mixinaudit/
 
 # java
 hs_err_*.log

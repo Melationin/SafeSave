@@ -1,6 +1,7 @@
 package com.carpet.safesave.safesave.chunk;
 
 import com.carpet.safesave.debug.DebugLog;
+import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
@@ -75,7 +76,7 @@ public final class ChunkRebuildCoordinator {
             } catch (Exception e) {
                 levelState.pendingChunks.remove(key);
                 DebugLog.warn("{}: failed to restore scheduled ticks for chunk {}, dropping its snapshot: {}",
-                        dimension, ChunkPos.unpack(key), e.toString());
+                        dimension, ChunkPosHelper.unpack(key), e.toString());
                 continue;
             }
             // 恢复成功后才移除快照。

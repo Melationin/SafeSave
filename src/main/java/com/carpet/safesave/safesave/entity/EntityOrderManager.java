@@ -2,6 +2,7 @@ package com.carpet.safesave.safesave.entity;
 
 
 import com.carpet.safesave.debug.DebugLog;
+import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -46,7 +47,7 @@ public final class EntityOrderManager {
 
         List<Entity> affected = new ArrayList<>();
         for (Entity entity : all) {
-            if (newChunks.contains(entity.chunkPosition().pack())) {
+            if (newChunks.contains(ChunkPosHelper.pack(entity.chunkPosition()))) {
                 affected.add(entity);
             }
         }

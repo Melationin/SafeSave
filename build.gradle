@@ -1,12 +1,34 @@
+buildscript {
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://api.modrinth.com/maven' }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath "net.fabricmc:fabric-loom:${loom_version}"
+    }
+}
+
 plugins {
-    id 'net.fabricmc.fabric-loom' version "${loom_version}"
     id 'maven-publish'
 }
+
+def minecraftVer = stonecutter.current.version
 
 version = project.mod_version
 group = project.maven_group
 
-def minecraftVer = stonecutter.current.version
+// 26.1+ ships official (Mojang) names natively -> plain fabric-loom.
+// Everything older is remapped from official -> intermediary -> plain fabric-loom-remap.
+def modern = stonecutter.eval(minecraftVer, ">=26.1")
+if (modern) {
+    apply plugin: 'net.fabricmc.fabric-loom'
+} else {
+    apply plugin: 'net.fabricmc.fabric-loom-remap'
+}
 
 base {
     archivesName = "${project.archives_base_name}-${minecraftVer}"
@@ -22,8 +44,30 @@ repositories {
     mavenCentral()
 }
 
+// 1.21.11 renamed the whole resource-id API family.
+def pre12111 = stonecutter.eval(minecraftVer, "<1.21.11")
+// Stonecutter 0.7.x has reduced Groovy DSL support: the builder must be an explicit
+// closure parameter, a delegated no-arg closure resolves its calls against the extension.
+def legacyIds = { b -> b.replace("net.minecraft.resources.Identifier", "net.minecraft.resources.ResourceLocation") }
+
+stonecutter {
+    // Identifier -> ResourceLocation
+    replacements.string(pre12111, legacyIds)
+}
+
+// The access widener has to be materialised outside src/ so that the per-version header
+// rewrite is picked up by loom. The file name is kept identical to the one declared in
+// fabric.mod.json, because loom copies it into the jar under that very name.
+def awFile = layout.buildDirectory.file("processedAW/safesave.classtweaker").get().asFile
+awFile.parentFile.mkdirs()
+def awText = rootProject.file("src/main/resources/safesave.classtweaker").getText("UTF-8")
+if (!modern) {
+    awText = awText.replaceFirst(/(?m)^classTweaker\s+v1\s+official/, "classTweaker v1 named")
+}
+awFile.setText(awText, "UTF-8")
+
 loom {
-    accessWidenerPath =rootProject.file("src/main/resources/safesave.classtweaker")
+    accessWidenerPath = awFile
 
     mods {
         "safesave" {
@@ -35,11 +79,35 @@ loom {
         ideConfigGenerated true
         runDir "../../run"
     }
+
+    def auditVmArgs = ['-Dsafesave.mixin_audit=true']
+
+    runs {
+        serverMixinAudit {
+            server()
+            vmArgs auditVmArgs
+            // Isolated from the shared run/ directory: that one carries whatever mods the
+            // developer happens to play with, and they are version-locked to one node.
+            runDir "../../run-mixinaudit"
+            ideConfigGenerated false
+        }
+        clientMixinAudit {
+            client()
+            vmArgs auditVmArgs
+            runDir "../../run-mixinaudit"
+            ideConfigGenerated false
+        }
+    }
 }
 
 dependencies {
     minecraft "com.mojang:minecraft:${stonecutter.current.project}"
-    implementation "net.fabricmc:fabric-loader:${property("loader_version")}"
+    if (!modern) {
+        mappings loom.officialMojangMappings()
+        modImplementation "net.fabricmc:fabric-loader:${property("loader_version")}"
+    } else {
+        implementation "net.fabricmc:fabric-loader:${property("loader_version")}"
+    }
 }
 
 processResources {
@@ -51,11 +119,52 @@ processResources {
                 "modVer"      : mod_version
         ])
     }
+
+    // Stonecutter 0.7.x does not run its replacements over .classtweaker files, so the copy
+    // that ends up on the classpath of a dev run is rewritten here. The header literal has two
+    // spaces in the source file, hence the doubled spaces below.
+    if (!modern) {
+        filesMatching("safesave.classtweaker") {
+            filter { line -> line.replace("classTweaker  v1  official", "classTweaker v1 named") }
+        }
+    }
 }
 
+// ---------------------------------------------------------------------------
+// Mixin audit gate.
+// The audit runs inside the game (-Dsafesave.mixin_audit=true, see
+// AutoMixinAuditExecutor) and exits the JVM with its verdict. Fabric, however,
+// logs a failed startup and still lets the process exit with code 0, so the exit
+// value alone cannot be trusted. The run task is therefore required to produce
+// the audit's own success marker; anything else fails the build.
+// ---------------------------------------------------------------------------
+tasks.matching { it.name == "runServerMixinAudit" || it.name == "runClientMixinAudit" }.configureEach { t ->
+    def auditLog = new File(layout.buildDirectory.get().asFile, "mixin-audit-${t.name}.log")
+    t.ignoreExitValue = true
+    t.doFirst {
+        auditLog.parentFile.mkdirs()
+        def stream = new FileOutputStream(auditLog)
+        t.standardOutput = stream
+        t.errorOutput = stream
+    }
+    t.doLast {
+        def text = auditLog.exists() ? auditLog.getText("UTF-8") : ""
+        if (text.contains("Mixin audit result: successful")) {
+            logger.lifecycle("Mixin audit OK: ${project.path} (${t.name})")
+            return
+        }
+        def tail = text.length() > 12000 ? text.substring(text.length() - 12000) : text
+        logger.error(tail)
+        throw new GradleException("Mixin audit FAILED for ${project.path}: '${t.name}' did not report "
+                + "'Mixin audit result: successful'. Full log: ${auditLog}")
+    }
+}
+
+def javaVersion = modern ? JavaVersion.VERSION_25 : JavaVersion.VERSION_21
+
 java {
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
+    sourceCompatibility = javaVersion
+    targetCompatibility = javaVersion
 }
 
 jar {
