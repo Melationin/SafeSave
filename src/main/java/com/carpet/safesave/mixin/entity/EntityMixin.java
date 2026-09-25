@@ -16,6 +16,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.Locale;
 import java.util.Optional;
 
 
@@ -122,7 +123,14 @@ public abstract class EntityMixin implements EntityOrderHolder
         ValueOutput finalSafe = safe;
         this.mainSupportingBlockPos.ifPresent(pos -> finalSafe.store("main_supporting_block_pos", BlockPos.CODEC, pos));
         safe.putBoolean("on_ground_no_blocks", this.onGroundNoBlocks);
+        // Pose only became a StringRepresentable with a codec in 1.21.9. The codec writes the
+        // lower-case serialized name, so the legacy branch spells that out by hand to keep the
+        // stored format identical.
+        //? if <1.21.9 {
+        /*safe.putString("pose", this.getPose().name().toLowerCase(Locale.ROOT));
+        *///?} else {
         safe.store("pose", Pose.CODEC, this.getPose());
+        //?}
         safe.putLong("entity_order", this.SS$entityOrder);
 
     }
@@ -157,7 +165,18 @@ public abstract class EntityMixin implements EntityOrderHolder
         this.wasEyeInWater = safe.getBooleanOr("was_eye_in_water", this.wasEyeInWater);
         safe.read("main_supporting_block_pos", BlockPos.CODEC).ifPresent(pos -> this.mainSupportingBlockPos = Optional.of(pos));
         this.onGroundNoBlocks = safe.getBooleanOr("on_ground_no_blocks", this.onGroundNoBlocks);
+        //? if <1.21.9 {
+        /*safe.getString("pose").ifPresent(name -> {
+            for (Pose pose : Pose.values()) {
+                if (pose.name().equalsIgnoreCase(name)) {
+                    this.setPose(pose);
+                    return;
+                }
+            }
+        });
+        *///?} else {
         safe.read("pose", Pose.CODEC).ifPresent(this::setPose);
+        //?}
         long order = safe.getLongOr("entity_order", this.SS$entityOrder);
         if (order != Long.MIN_VALUE) {
             this.SS$entityOrder = order;

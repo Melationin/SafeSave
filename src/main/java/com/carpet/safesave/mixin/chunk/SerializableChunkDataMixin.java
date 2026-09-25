@@ -7,7 +7,11 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.chunk.ChunkAccess;
+//? if <1.21.9 {
+/*import net.minecraft.core.RegistryAccess;
+*///?} else {
 import net.minecraft.world.level.chunk.PalettedContainerFactory;
+//?}
 import net.minecraft.world.level.chunk.storage.SerializableChunkData;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -32,9 +36,14 @@ public abstract class SerializableChunkDataMixin implements SerializableChunkDat
         this.SS$safeSaveTag = tag;
     }
 
+    // 1.21.9 replaced the RegistryAccess parameter with a PalettedContainerFactory.
     @Inject(method = "parse", at = @At("HEAD"))
     private static void SS$onParse(final LevelHeightAccessor levelHeight,
+                                   //? if <1.21.9 {
+                                   /*final RegistryAccess containerFactory,
+                                   *///?} else {
                                    final PalettedContainerFactory containerFactory,
+                                   //?}
                                    final CompoundTag chunkData,
                                    final CallbackInfoReturnable<SerializableChunkData> cir) {
         if (levelHeight instanceof ServerLevel level) {

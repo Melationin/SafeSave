@@ -25,8 +25,15 @@ import static com.carpet.safesave.util.Util.dimensionId;
 public final class StartupChunkRecovery {
     // 不注册进 BuiltInRegistries.TICKET_TYPE（该表在 main 入口点之前就已冻结）：本类型无 FLAG_PERSIST，
     // TicketStorage 从不查注册表，Ticket.CODEC 与 toString() 都用不到未注册类型。
+    // 1.21.9 把 TicketType 从 (timeout, persist, TicketUse) 记录改成了位标志；
+    // FLAG_KEEP_DIMENSION_ACTIVE 在旧模型里没有对应项，LOADING 就是最接近的语义。
+    //? if <1.21.9 {
+    /*private static final TicketType STARTUP_LOAD =
+            new TicketType(0L, false, TicketType.TicketUse.LOADING);
+    *///?} else {
     private static final TicketType STARTUP_LOAD = new TicketType(0,
             TicketType.FLAG_LOADING | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
+    //?}
 
     private StartupChunkRecovery() {}
 
