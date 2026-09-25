@@ -59,7 +59,13 @@ public final class StartupChunkRecovery {
         int total = 0;
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveStore.DimensionData saved = session.store.dimensionOrNull(dimensionId(level));
-            if (saved != null) total += saved.tickingChunks.size();
+            if (saved == null) continue;
+            // 只数 31/32：下面挂票时同一批条目会被再过滤一次，两处必须口径一致，否则
+            // total 与 update() 里的 loadStatus().total 不等，会在第一个 tick 就判定"全部加载完"
+            // 而立刻解冻。
+            for (Long2ByteMap.Entry entry : saved.tickingChunks.long2ByteEntrySet()) {
+                if (entry.getByteValue() == 31 || entry.getByteValue() == 32) total++;
+            }
         }
         if (total == 0) {
             DebugLog.info("no level-31/32 chunks were recorded; startup needs no loading barrier");
@@ -145,16 +151,19 @@ public final class StartupChunkRecovery {
             source.runDistanceManagerUpdates();
             Long2ByteOpenHashMap levels = new Long2ByteOpenHashMap();
             //? if <1.21.5 {
-            /*// 1.21.4 没有 SimulationChunkTracker。DistanceManager 按区块回答同一个问题
-            // （inBlockTickingRange = 层级 <=31，inEntityTickingRange = 层级 <=32），
-            // 而 visibleChunkMap 的 key 本身就是区块坐标。
+            /*// 1.21.4 没有 SimulationChunkTracker。DistanceManager 借 TickingTracker 回答同一个问题：
+            //   inEntityTickingRange -> 区块层级 <= 31（实体刻）
+            //   inBlockTickingRange  -> 区块层级 <= 32（仅方块刻）
+            // 实体刻是方块刻的子集，必须先判实体刻；存进去的 31/32 与 SafeSaveStore 的
+            // ENTITY_TICKING_CHUNKS / BLOCK_TICKING_CHUNKS 两个数组含义一致（31 = 实体刻）。
+            // visibleChunkMap 的 key 本身就是区块坐标。
             DistanceManager distanceManager = source.chunkMap.getDistanceManager();
             for (Long2ObjectMap.Entry<ChunkHolder> holder : source.chunkMap.visibleChunkMap.long2ObjectEntrySet()) {
                 long key = holder.getLongKey();
                 if (distanceManager.inEntityTickingRange(key)) {
-                    levels.put(key, (byte) 32);
-                } else if (distanceManager.inBlockTickingRange(key)) {
                     levels.put(key, (byte) 31);
+                } else if (distanceManager.inBlockTickingRange(key)) {
+                    levels.put(key, (byte) 32);
                 }
             }
             *///?} else {
