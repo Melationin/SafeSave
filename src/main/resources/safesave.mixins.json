@@ -16,6 +16,7 @@
     "entity.PrimedTntMixin",
     "scheduled.LevelChunkTicksMixin",
     "util.TagValueOutputMixin",
+    "util.CompoundTagCompatMixin",
     "chunk.SerializableChunkDataMixin",
     "chunk.ChunkMapMixin"
   ],

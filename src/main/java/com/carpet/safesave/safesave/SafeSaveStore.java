@@ -3,6 +3,7 @@ package com.carpet.safesave.safesave;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
 import com.carpet.safesave.safesave.scheduled.SafeTick;
+import com.carpet.safesave.util.TagCompat;
 import it.unimi.dsi.fastutil.longs.Long2ByteMap;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
 
@@ -172,13 +173,13 @@ public final class SafeSaveStore {
             throw new IllegalStateException("unsupported safe-save format version " + version
                     + " (expected " + FORMAT_VERSION + ")");
         }
-        root.getCompound(KEY_DEBUG).ifPresent(
+        TagCompat.compound(root, KEY_DEBUG).ifPresent(
                 debug -> store.setServerTickCount(debug.getIntOr(KEY_DEBUG_SERVER_TICK, -1)));
 
         ListTag levels = root.getListOrEmpty(KEY_LEVELS);
         for (int i = 0; i < levels.size(); i++) {
             final int index = i;
-            levels.getCompound(index).ifPresent(levelTag -> {
+            TagCompat.compound(levels, index).ifPresent(levelTag -> {
                 String dimensionId = levelTag.getStringOr(KEY_DIMENSION, "");
                 if (dimensionId.isEmpty()) {
                     return;
@@ -187,10 +188,10 @@ public final class SafeSaveStore {
                 data.subTickCount = levelTag.getLongOr(KEY_SUB_TICK_COUNT, -1L);
                 data.gameTime = levelTag.getLongOr(KEY_DEBUG_GAME_TIME, Long.MIN_VALUE);
                 if (version >= 6) {
-                    for (long key : levelTag.getLongArray(KEY_ENTITY_TICKING_CHUNKS).orElseGet(() -> new long[0])) {
+                    for (long key : TagCompat.longArrayOrEmpty(levelTag, KEY_ENTITY_TICKING_CHUNKS)) {
                         data.tickingChunks.put(key, (byte)31);
                     }
-                    for (long key : levelTag.getLongArray(KEY_BLOCK_TICKING_CHUNKS).orElseGet(() -> new long[0])) {
+                    for (long key : TagCompat.longArrayOrEmpty(levelTag, KEY_BLOCK_TICKING_CHUNKS)) {
                         data.tickingChunks.putIfAbsent(key, (byte)32);
                     }
                 }
@@ -219,7 +220,7 @@ public final class SafeSaveStore {
         List<SafeTick> ticks = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
             final int index = i;
-            list.getCompound(index).ifPresent(tag -> {
+            TagCompat.compound(list, index).ifPresent(tag -> {
                 SafeTick tick = SafeTick.load(tag);
                 if (tick != null) {
                     ticks.add(tick);
@@ -233,7 +234,7 @@ public final class SafeSaveStore {
         List<SafeBlockEvent> events = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
             final int index = i;
-            list.getCompound(index).ifPresent(tag -> {
+            TagCompat.compound(list, index).ifPresent(tag -> {
                 SafeBlockEvent event = SafeBlockEvent.load(tag);
                 if (event != null) {
                     events.add(event);

@@ -18,6 +18,12 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.Ticket;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
+//? if <1.21.5 {
+/*import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import net.minecraft.server.level.ChunkHolder;
+import net.minecraft.server.level.DistanceManager;
+import net.minecraft.util.Unit;
+*///?}
 
 import static com.carpet.safesave.util.Util.dimensionId;
 
@@ -25,6 +31,12 @@ import static com.carpet.safesave.util.Util.dimensionId;
 public final class StartupChunkRecovery {
     // 不注册进 BuiltInRegistries.TICKET_TYPE（该表在 main 入口点之前就已冻结）：本类型无 FLAG_PERSIST，
     // TicketStorage 从不查注册表，Ticket.CODEC 与 toString() 都用不到未注册类型。
+    //? if <1.21.5 {
+    /*// 1.21.4 的票据系统完全不同：TicketType 是带 Comparator 的类，没有 TicketStorage，
+    // 票据由 DistanceManager#addTicket/removeTicket(TicketType, ChunkPos, int, T) 管理。
+    private static final TicketType<Unit> STARTUP_LOAD =
+            TicketType.create("safesave_startup_load", (first, second) -> 0);
+    *///?} else {
     // 1.21.9 把 TicketType 从 (timeout, persist, TicketUse) 记录改成了位标志；
     // FLAG_KEEP_DIMENSION_ACTIVE 在旧模型里没有对应项，LOADING 就是最接近的语义。
     //? if <1.21.9 {
@@ -33,6 +45,7 @@ public final class StartupChunkRecovery {
     *///?} else {
     private static final TicketType STARTUP_LOAD = new TicketType(0,
             TicketType.FLAG_LOADING | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
+    //?}
     //?}
 
     private StartupChunkRecovery() {}
@@ -64,7 +77,7 @@ public final class StartupChunkRecovery {
                 if (ticketLevel != 31 && ticketLevel != 32) continue;
                 long key = entry.getLongKey();
                 state.startupTickets.put(key, ticketLevel);
-                level.getChunkSource().ticketStorage.addTicket(key, new Ticket(STARTUP_LOAD, ticketLevel));
+                addStartupTicket(level, key, ticketLevel);
             }
             level.getChunkSource().runDistanceManagerUpdates();
         }
@@ -131,6 +144,20 @@ public final class StartupChunkRecovery {
             }
             source.runDistanceManagerUpdates();
             Long2ByteOpenHashMap levels = new Long2ByteOpenHashMap();
+            //? if <1.21.5 {
+            /*// 1.21.4 没有 SimulationChunkTracker。DistanceManager 按区块回答同一个问题
+            // （inBlockTickingRange = 层级 <=31，inEntityTickingRange = 层级 <=32），
+            // 而 visibleChunkMap 的 key 本身就是区块坐标。
+            DistanceManager distanceManager = source.chunkMap.getDistanceManager();
+            for (Long2ObjectMap.Entry<ChunkHolder> holder : source.chunkMap.visibleChunkMap.long2ObjectEntrySet()) {
+                long key = holder.getLongKey();
+                if (distanceManager.inEntityTickingRange(key)) {
+                    levels.put(key, (byte) 32);
+                } else if (distanceManager.inBlockTickingRange(key)) {
+                    levels.put(key, (byte) 31);
+                }
+            }
+            *///?} else {
             for (Long2ByteMap.Entry entry : source.chunkMap.getDistanceManager()
                     .simulationChunkTracker.chunks.long2ByteEntrySet()) {
                 byte simulationLevel = entry.getByteValue();
@@ -138,6 +165,7 @@ public final class StartupChunkRecovery {
                     levels.put(entry.getLongKey(), simulationLevel <= 31 ? (byte)31 : (byte)32);
                 }
             }
+            //?}
             SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
             state.tickingChunksAtTickEnd = levels;
             state.tickingSnapshotAvailable = true;
@@ -184,8 +212,7 @@ public final class StartupChunkRecovery {
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
             for (Long2ByteMap.Entry entry : state.startupTickets.long2ByteEntrySet()) {
-                level.getChunkSource().ticketStorage.removeTicket(entry.getLongKey(),
-                        new Ticket(STARTUP_LOAD, entry.getByteValue()));
+                removeStartupTicket(level, entry.getLongKey(), entry.getByteValue());
                 released++;
             }
             state.startupTickets.clear();
@@ -196,4 +223,24 @@ public final class StartupChunkRecovery {
     }
 
     private record LoadStatus(int total, int loaded) {}
+
+    // 1.21.5 起票据由 TicketStorage 按 (区块坐标, Ticket) 直接存取；1.21.4 走
+    // DistanceManager#addTicket/removeTicket(TicketType, ChunkPos, int level, T value)。
+    private static void addStartupTicket(ServerLevel level, long chunkPos, byte ticketLevel) {
+        //? if <1.21.5 {
+        /*level.getChunkSource().chunkMap.getDistanceManager()
+                .addTicket(STARTUP_LOAD, new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
+        *///?} else {
+        level.getChunkSource().ticketStorage.addTicket(chunkPos, new Ticket(STARTUP_LOAD, ticketLevel));
+        //?}
+    }
+
+    private static void removeStartupTicket(ServerLevel level, long chunkPos, byte ticketLevel) {
+        //? if <1.21.5 {
+        /*level.getChunkSource().chunkMap.getDistanceManager()
+                .removeTicket(STARTUP_LOAD, new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
+        *///?} else {
+        level.getChunkSource().ticketStorage.removeTicket(chunkPos, new Ticket(STARTUP_LOAD, ticketLevel));
+        //?}
+    }
 }

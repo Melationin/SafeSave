@@ -194,7 +194,7 @@ final class ValueReaderView implements NbtView.Reader {
     // 1.21.5: the CompoundTag already is the backing store, and getCompound returns the live
     // nested tag from the map instead of a copy, so reusing it is all that is needed here.
     private static CompoundTag liveChild(final CompoundTag tag, final String key) {
-        CompoundTag existing = tag.getCompound(key).orElse(null);
+        CompoundTag existing = TagCompat.childOrNull(tag, key);
         if (existing != null) {
             return existing;
         }
@@ -269,7 +269,7 @@ final class TagReaderView implements NbtView.Reader {
 
     @Override
     public Optional<String> getString(final String key) {
-        return this.tag.getString(key);
+        return TagCompat.string(this.tag, key);
     }
 
     @Override
@@ -279,7 +279,7 @@ final class TagReaderView implements NbtView.Reader {
 
     @Override
     public Optional<NbtView.Reader> child(final String key) {
-        return this.tag.getCompound(key).map(TagReaderView::new);
+        return TagCompat.compound(this.tag, key).map(TagReaderView::new);
     }
 }
 *///?}

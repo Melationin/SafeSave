@@ -6,6 +6,7 @@ import static com.carpet.safesave.util.Util.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.util.ChunkPosHelper;
+import com.carpet.safesave.util.TagCompat;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
@@ -26,7 +27,7 @@ public final class ChunkNbtBridge {
             return;
         }
         long key = ChunkPosHelper.pack(chunkData.getIntOr("xPos", 0), chunkData.getIntOr("zPos", 0));
-        CompoundTag safeSave = chunkData.getCompound(KEY_SAFE_SAVE).orElse(null);
+        CompoundTag safeSave = TagCompat.compound(chunkData, KEY_SAFE_SAVE).orElse(null);
         if (safeSave == null) {
             levelState.pendingChunks.remove(key);
             return;

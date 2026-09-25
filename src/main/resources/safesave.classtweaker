@@ -4,20 +4,34 @@ accessible field net/minecraft/world/level/Level subTickCount J
 accessible field net/minecraft/world/level/Level blockEntityTickers Ljava/util/List;
 accessible field net/minecraft/server/level/ServerLevel blockEvents Lit/unimi/dsi/fastutil/objects/ObjectLinkedOpenHashSet;
 accessible field net/minecraft/server/level/ServerLevel entityTickList Lnet/minecraft/world/level/entity/EntityTickList;
-accessible field net/minecraft/server/level/ServerChunkCache ticketStorage Lnet/minecraft/world/level/TicketStorage;
 accessible method net/minecraft/server/level/ServerChunkCache runDistanceManagerUpdates ()Z
 accessible field net/minecraft/server/level/ChunkMap visibleChunkMap Lit/unimi/dsi/fastutil/longs/Long2ObjectLinkedOpenHashMap;
 accessible method net/minecraft/server/level/ChunkMap processUnloads (Ljava/util/function/BooleanSupplier;)V
 accessible method net/minecraft/server/level/ChunkMap saveAllChunks (Z)V
-accessible field net/minecraft/server/level/DistanceManager simulationChunkTracker Lnet/minecraft/server/level/SimulationChunkTracker;
-accessible field net/minecraft/server/level/SimulationChunkTracker chunks Lit/unimi/dsi/fastutil/longs/Long2ByteMap;
 accessible field net/minecraft/world/ticks/LevelTicks allContainers Lit/unimi/dsi/fastutil/longs/Long2ObjectMap;
 
+# 1.21.5 replaced the ticket system: TicketStorage and the ChunkTracker-based DistanceManager only
+# exist from there on. On 1.21.4 StartupChunkRecovery goes through DistanceManager#addTicket and
+# DistanceManager#inBlockTickingRange/inEntityTickingRange instead, which are already public.
+#? if >=1.21.5 {
+accessible field net/minecraft/server/level/ServerChunkCache ticketStorage Lnet/minecraft/world/level/TicketStorage;
+accessible field net/minecraft/server/level/DistanceManager simulationChunkTracker Lnet/minecraft/server/level/SimulationChunkTracker;
+accessible field net/minecraft/server/level/SimulationChunkTracker chunks Lit/unimi/dsi/fastutil/longs/Long2ByteMap;
+#?}
+
 # TagValueOutput only exists from 1.21.6 on. 1.21.5 needs none of it: CompoundTag#getCompound
-# already returns the live nested tag, which is what NbtView.TagView uses instead.
+# already returns the live nested tag, which is what NbtView.TagWriterView uses instead.
 #? if >=1.21.6 {
 accessible field net/minecraft/world/level/storage/TagValueOutput output Lnet/minecraft/nbt/CompoundTag;
 accessible method net/minecraft/world/level/storage/TagValueOutput <init> (Lnet/minecraft/util/ProblemReporter;Lcom/mojang/serialization/DynamicOps;Lnet/minecraft/nbt/CompoundTag;)V
 
 inject-interface net/minecraft/world/level/storage/TagValueOutput com/carpet/safesave/util/ValueOutputAccess
+#?}
+
+# Up to 1.21.4 CompoundTag only has the raw accessors; TagCompatAccess supplies the 1.21.5
+# convenience API (getIntOr, getStringOr, getListOrEmpty, store, read, ...) on top of them.
+# The body is '#'-commented because this source tree is the 26.1 node (vcsVersion), where the
+# branch is inactive; stonecutter uncomments it for the 1.21.4-and-below nodes.
+#? if <1.21.5 {
+#inject-interface net/minecraft/nbt/CompoundTag com/carpet/safesave/util/TagCompatAccess
 #?}
