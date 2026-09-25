@@ -118,6 +118,25 @@ public final class SafeSaveManager {
         return root;
     }
 
+    // 1.21.1: ChunkSerializer#write takes the live chunk, so there is no two-phase hand-off and the
+    // tag is computed here directly.
+    public static CompoundTag injectChunkData(final ServerLevel level,
+                                              final ChunkAccess chunk,
+                                              final CompoundTag root) {
+        if (!capturesChunk(level, ChunkPosHelper.pack(chunk.getPos()))) {
+            return root;
+        }
+        SafeSaveSession session = SafeSaveSession.current();
+        if (session == null || session.store == null) {
+            return root;
+        }
+        CompoundTag tag = ChunkNbtBridge.onChunkSerializing(level, chunk, session, SafeSaveLevelAccess.of(level));
+        if (tag != null) {
+            root.put(KEY_SAFE_SAVE, tag);
+        }
+        return root;
+    }
+
     public static void onLevelTickStart(final ServerLevel level) {
         SafeSaveSession startupSession = SafeSaveSession.current();
         if (startupSession != null) StartupChunkRecovery.enforceFreeze(level, startupSession);

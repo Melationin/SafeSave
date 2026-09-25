@@ -88,7 +88,12 @@ public final class BlockEventManager {
             long next = levelState.nextBlockEventOrder;
             int restored = 0;
             for (SafeBlockEvent entry : valid) {
+                // 1.21.2 renamed Registry#get(ResourceLocation) to Registry#getValue(ResourceLocation).
+                //? if <1.21.2 {
+                /*Block block = BuiltInRegistries.BLOCK.get(Identifier.tryParse(entry.blockId()));
+                *///?} else {
                 Block block = BuiltInRegistries.BLOCK.getValue(Identifier.tryParse(entry.blockId()));
+                //?}
                 BlockEventData event = new BlockEventData(
                         new BlockPos(entry.x(), entry.y(), entry.z()),
                         block, entry.paramA(), entry.paramB());
