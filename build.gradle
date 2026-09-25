@@ -17,6 +17,9 @@ plugins {
 }
 
 def minecraftVer = stonecutter.current.version
+// 该节点代表的受支持版本范围（同一 API 纪元），用于产物名；取自 versions/<ver>/gradle.properties。
+// 例如节点 26.1 的 version_range=26.1-26.2，产出 safesave-26.1-26.2-<modVer>.jar。
+def versionRange = project.findProperty("version_range") ?: minecraftVer
 
 version = project.mod_version
 group = project.maven_group
@@ -31,7 +34,7 @@ if (modern) {
 }
 
 base {
-    archivesName = "${project.archives_base_name}-${minecraftVer}"
+    archivesName = "${project.archives_base_name}-${versionRange}"
 }
 
 repositories {
@@ -170,7 +173,7 @@ java {
 }
 
 jar {
-    inputs.property "archivesName", "${project.base.archivesName}-${minecraftVer}"
+    inputs.property "archivesName", project.base.archivesName
 
     from(rootProject.file("LICENSE")) {
         rename { "${it}_${inputs.properties.archivesName}" }

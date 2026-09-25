@@ -33,9 +33,17 @@ stonecutter {
     kotlinController = false
     centralScript = "build.gradle"
     create(getRootProject()) {
-        // 1.21.5 and older predate the ValueInput/ValueOutput layer (added in 1.21.6); the mod
-        // reaches both through com.carpet.safesave.util.NbtView, so no separate backend is needed.
-        versions "1.21", "1.21.1", "1.21.2", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.7", "1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1", "26.2"
+        // 每个 API 纪元只保留最低版本；该节点产出的 jar 覆盖整个纪元（见 versions/<v>/gradle.properties
+        // 的 version_range / minecraft_ver）。
+        //   1.21     -> 1.21 ~ 1.21.1    1.21.2 -> 1.21.2 ~ 1.21.4   1.21.5  -> 1.21.5
+        //   1.21.6   -> 1.21.6 ~ 1.21.8  1.21.9 -> 1.21.9 ~ 1.21.10  1.21.11 -> 1.21.11
+        //   26.1     -> 26.1 ~ 26.2
+        // 每个纪元内的版本走完全相同的代码路径，单独建节点只会重复验证同一批分支。
+        versions "1.21", "1.21.2", "1.21.5", "1.21.6", "1.21.9", "1.21.11", "26.1"
+        // 休眠节点（目录与配置都保留在 versions/ 下，需要时把版本号加回上面一行即可，例如
+        // "1.21.4" / "26.2"）：
+        //   1.21.1 -> 纪元 A   1.21.3, 1.21.4 -> 纪元 B   1.21.7, 1.21.8 -> 纪元 D
+        //   1.21.10 -> 纪元 E  26.2 -> 纪元 G
         vcsVersion = "26.1"
     }
 }
