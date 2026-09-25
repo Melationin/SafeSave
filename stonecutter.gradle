@@ -3,3 +3,8 @@ plugins {
 }
 
 stonecutter.active "26.1"
+
+// .classtweaker files are processed with the YAML-style handler so that Stonecutter's
+// replacements (notably the "official" -> "named" header rewrite) are applied to the copy
+// that lands in the node's resources and therefore on a dev run's classpath.
+stonecutter.handlers.inherit("yml", "classtweaker")

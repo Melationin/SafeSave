@@ -12,6 +12,10 @@ pluginManagement {
         }
         maven { url = "https://api.modrinth.com/maven" }
         maven {
+            name = "KikuGie Releases"
+            url = "https://maven.kikugie.dev/releases"
+        }
+        maven {
             name = "KikuGie Snapshots"
             url = "https://maven.kikugie.dev/snapshots"
         }
@@ -22,7 +26,7 @@ pluginManagement {
 }
 
 plugins {
-    id("dev.kikugie.stonecutter") version "0.7.11"
+    id("dev.kikugie.stonecutter") version "0.9.7"
 }
 
 stonecutter {
