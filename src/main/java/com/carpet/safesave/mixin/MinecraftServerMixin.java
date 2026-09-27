@@ -2,8 +2,11 @@ package com.carpet.safesave.mixin;
 
 import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.safesave.SafeSaveManager;
+import com.carpet.safesave.safesave.SafeSaveServerAccess;
+import com.carpet.safesave.safesave.SafeSaveSession;
 import net.minecraft.server.MinecraftServer;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -12,14 +15,27 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.function.BooleanSupplier;
 
 @Mixin(MinecraftServer.class)
-public abstract class MinecraftServerMixin {
+public abstract class MinecraftServerMixin implements SafeSaveServerAccess {
+
+    @Unique private final SafeSaveSession SS$session = new SafeSaveSession();
+    @Unique private final SafeSaveConfig SS$config = new SafeSaveConfig();
+
+    @Override
+    public SafeSaveSession SS$session() {
+        return this.SS$session;
+    }
+
+    @Override
+    public SafeSaveConfig SS$config() {
+        return this.SS$config;
+    }
 
 
     @Inject(method = "loadLevel", at = @At("HEAD"))
     private void SS$onServerLoaded(final CallbackInfo ci) {
         MinecraftServer server = (MinecraftServer) (Object) this;
-        // 必须先于任何 shouldRun() 判定读档。
-        SafeSaveConfig.load(server);
+        // 必须先于任何 shouldRun(server) 判定读档。
+        this.SS$config.load(server);
         SafeSaveManager.onServerLoaded(server);
     }
 
@@ -45,7 +61,7 @@ public abstract class MinecraftServerMixin {
 
     @Inject(method = "tickChildren", at = @At("HEAD"))
     private void SS$onServerTickChildrenStart(final BooleanSupplier haveTime, final CallbackInfo ci) {
-        SafeSaveManager.onServerTickChildrenStart();
+        SafeSaveManager.onServerTickChildrenStart((MinecraftServer) (Object) this);
     }
 
     @Inject(method = "saveEverything", at = @At("HEAD"), cancellable = true)

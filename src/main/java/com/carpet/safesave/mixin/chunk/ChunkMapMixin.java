@@ -33,7 +33,7 @@ public abstract class ChunkMapMixin {
     @WrapOperation(method = "tick", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/server/level/ChunkMap;processUnloads(Ljava/util/function/BooleanSupplier;)V"))
     private void SS$deferUnloads(ChunkMap instance, BooleanSupplier haveTime, Operation<Void> original) {
-        if (SafeSaveManager.shouldRun() && !this.level.getServer().isStopped()
+        if (SafeSaveManager.shouldRun(this.level.getServer()) && !this.level.getServer().isStopped()
                 && SafeSaveLevelAccess.of(this.level).worldTickRunning) {
             SafeSaveLevelAccess.of(this.level).deferredUnloads = true;
             return;

@@ -32,17 +32,20 @@ public final class StartupChunkRecovery {
     // 不注册进 BuiltInRegistries.TICKET_TYPE（该表在 main 入口点之前就已冻结）：本类型无 FLAG_PERSIST，
     // TicketStorage 从不查注册表，Ticket.CODEC 与 toString() 都用不到未注册类型。
     //? if <1.21.5 {
-    /*private static final TicketType<Unit> STARTUP_LOAD =
-            TicketType.create("safesave_startup_load", (first, second) -> 0);
+    /*private static TicketType newTicketType() {
+        return TicketType.create("safesave_startup_load", (first, second) -> 0);
+    }
     *///?} else {
     // 1.21.9 把 TicketType 从 (timeout, persist, TicketUse) 记录改成了位标志；
     // FLAG_KEEP_DIMENSION_ACTIVE 在旧模型里没有对应项，LOADING 就是最接近的语义。
     //? if <1.21.9 {
-    /*private static final TicketType STARTUP_LOAD =
-            new TicketType(0L, false, TicketType.TicketUse.LOADING);
+    /*private static TicketType newTicketType() {
+        return new TicketType(0L, false, TicketType.TicketUse.LOADING);
+    }
     *///?} else {
-    private static final TicketType STARTUP_LOAD = new TicketType(0,
-            TicketType.FLAG_LOADING | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
+    private static TicketType newTicketType() {
+        return new TicketType(0, TicketType.FLAG_LOADING | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
+    }
     //?}
     //?}
 
@@ -55,7 +58,7 @@ public final class StartupChunkRecovery {
 
     public static void arm(MinecraftServer server, SafeSaveSession session) {
         // 超时为 0 时完全不设屏障：不冻结，也不挂载入票。
-        if (SafeSaveConfig.unfreezeTimeout <= 0) {
+        if (SafeSaveConfig.of(server).unfreezeTimeout <= 0) {
             DebugLog.info("startup loading barrier disabled (unfreezeTimeout <= 0)");
             return;
         }
@@ -73,6 +76,7 @@ public final class StartupChunkRecovery {
             DebugLog.info("no level-31/32 chunks were recorded; startup needs no loading barrier");
             return;
         }
+        session.startupLoadTicketType = newTicketType();
         server.tickRateManager().setFrozen(true);
         session.startupRecoveryWaiting = true;
         session.startupTicketsHeld = true;
@@ -85,12 +89,12 @@ public final class StartupChunkRecovery {
                 if (ticketLevel != 31 && ticketLevel != 32) continue;
                 long key = entry.getLongKey();
                 state.startupTickets.put(key, ticketLevel);
-                addStartupTicket(level, key, ticketLevel);
+                addStartupTicket(level, session, key, ticketLevel);
             }
             level.getChunkSource().runDistanceManagerUpdates();
         }
         DebugLog.info("startup frozen; loading {} previously ticking chunk(s), forced release after {} server ticks from the first real player",
-                total, Math.max(0, SafeSaveConfig.unfreezeTimeout));
+                total, Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout));
     }
 
     public static void update(MinecraftServer server, SafeSaveSession session) {
@@ -108,7 +112,7 @@ public final class StartupChunkRecovery {
             if (status.loaded == status.total) {
                 finish(server, session, "after all chunks loaded");
             } else if (session.firstRealPlayerTick >= 0
-                    && now - session.firstRealPlayerTick >= Math.max(0, SafeSaveConfig.unfreezeTimeout)) {
+                    && now - session.firstRealPlayerTick >= Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout)) {
                 DebugLog.warn("startup chunk wait timed out: {}/{} loaded", status.loaded, status.total);
                 finish(server, session, "after the loading timeout");
             } else if (now - session.startupLastLogTick >= 100) {
@@ -117,9 +121,9 @@ public final class StartupChunkRecovery {
             }
         }
         if (session.startupTicketsHeld && !session.startupRecoveryWaiting) {
-            int origin = SafeSaveConfig.timerFromFirstPlayer
+            int origin = SafeSaveConfig.of(server).timerFromFirstPlayer
                     ? session.firstRealPlayerTick : session.unfreezeTick;
-            if (origin >= 0 && now - origin >= Math.max(0, SafeSaveConfig.ticketDuration)) {
+            if (origin >= 0 && now - origin >= Math.max(0, SafeSaveConfig.of(server).ticketDuration)) {
                 releaseTickets(server, session);
             }
         }
@@ -134,7 +138,7 @@ public final class StartupChunkRecovery {
         if (session.startupRecoveryWaiting) {
             player.sendSystemMessage(Component.literal(
                     "[SafeSave] Loading chunks active at the last save. Game ticks are frozen; the wait lasts at most "
-                            + Math.max(0, SafeSaveConfig.unfreezeTimeout) + " server ticks after the first real player joins.")
+                            + Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout) + " server ticks after the first real player joins.")
                     .withStyle(ChatFormatting.YELLOW));
         }
     }
@@ -247,7 +251,7 @@ public final class StartupChunkRecovery {
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
             for (Long2ByteMap.Entry entry : state.startupTickets.long2ByteEntrySet()) {
-                removeStartupTicket(level, entry.getLongKey(), entry.getByteValue());
+                removeStartupTicket(level, session, entry.getLongKey(), entry.getByteValue());
                 released++;
             }
             state.startupTickets.clear();
@@ -259,21 +263,27 @@ public final class StartupChunkRecovery {
 
     private record LoadStatus(int total, int loaded) {}
 
-    private static void addStartupTicket(ServerLevel level, long chunkPos, byte ticketLevel) {
+    private static void addStartupTicket(ServerLevel level, SafeSaveSession session,
+                                         long chunkPos, byte ticketLevel) {
         //? if <1.21.5 {
         /*level.getChunkSource().chunkMap.getDistanceManager()
-                .addTicket(STARTUP_LOAD, new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
+                .addTicket((TicketType<Unit>) session.startupLoadTicketType,
+                        new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
         *///?} else {
-        level.getChunkSource().ticketStorage.addTicket(chunkPos, new Ticket(STARTUP_LOAD, ticketLevel));
+        level.getChunkSource().ticketStorage.addTicket(chunkPos,
+                new Ticket(session.startupLoadTicketType, ticketLevel));
         //?}
     }
 
-    private static void removeStartupTicket(ServerLevel level, long chunkPos, byte ticketLevel) {
+    private static void removeStartupTicket(ServerLevel level, SafeSaveSession session,
+                                            long chunkPos, byte ticketLevel) {
         //? if <1.21.5 {
         /*level.getChunkSource().chunkMap.getDistanceManager()
-                .removeTicket(STARTUP_LOAD, new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
+                .removeTicket((TicketType<Unit>) session.startupLoadTicketType,
+                        new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
         *///?} else {
-        level.getChunkSource().ticketStorage.removeTicket(chunkPos, new Ticket(STARTUP_LOAD, ticketLevel));
+        level.getChunkSource().ticketStorage.removeTicket(chunkPos,
+                new Ticket(session.startupLoadTicketType, ticketLevel));
         //?}
     }
 }

@@ -3,6 +3,7 @@ package com.carpet.safesave.mixin.entity;
 import com.carpet.safesave.util.NbtView;
 import com.carpet.safesave.util.SafeSaveNbt;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.Entity;
 //? if <1.21.6 {
 /*import net.minecraft.nbt.CompoundTag;
 *///?} else {
@@ -30,7 +31,7 @@ public abstract class AbstractMinecartMixin {
                       ValueOutput
                       //?}
                               output, final CallbackInfo ci) {
-        if (!SafeSaveNbt.enabled()) {
+        if (!SafeSaveNbt.enabled(((Entity) (Object) this).level())) {
             return;
         }
         NbtView.Writer safe = SafeSaveNbt.child(NbtView.writer(output));
@@ -46,7 +47,7 @@ public abstract class AbstractMinecartMixin {
                       ValueInput
                       //?}
                               input, final CallbackInfo ci) {
-        if (!SafeSaveNbt.enabled()) {
+        if (!SafeSaveNbt.enabled(((Entity) (Object) this).level())) {
             return;
         }
         NbtView.Reader safe = SafeSaveNbt.childOrNull(NbtView.reader(input));

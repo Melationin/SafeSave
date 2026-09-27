@@ -27,28 +27,28 @@ public final class SafeSaveManager {
     private SafeSaveManager() {
     }
 
-    public static boolean shouldRun() {
-        return SafeSaveConfig.safeSave;
+    public static boolean shouldRun(final MinecraftServer server) {
+        return SafeSaveConfig.of(server).safeSave;
     }
 
     private static boolean capturesChunk(ServerLevel level, long key) {
         SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-        return shouldRun() || state.pendingChunks.containsKey(key);
+        return shouldRun(level.getServer()) || state.pendingChunks.containsKey(key);
     }
 
     public static void onServerLoaded(final MinecraftServer server) {
-        if (!shouldRun()) {
+        if (!shouldRun(server)) {
             return;
         }
-        SafeSaveSession session = SafeSaveSession.begin();
+        SafeSaveSession session = SafeSaveSession.of(server);
         SafeSaveFiles.loadAll(server, session);
     }
 
     public static void onLevelsCreated(final MinecraftServer server) {
-        if (!shouldRun()) {
+        if (!shouldRun(server)) {
             return;
         }
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(server);
         if (session == null || session.store == null) {
             return;
         }
@@ -62,7 +62,7 @@ public final class SafeSaveManager {
 
 
     public static void onFirstServerTick(final MinecraftServer server) {
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(server);
         if (session == null) {
             return;
         }
@@ -73,13 +73,13 @@ public final class SafeSaveManager {
         StartupChunkRecovery.update(server, session);
     }
 
-    public static void onServerTickChildrenStart() {
-        SafeSaveSession session = SafeSaveSession.current();
+    public static void onServerTickChildrenStart(final MinecraftServer server) {
+        SafeSaveSession session = SafeSaveSession.of(server);
         if (session != null) session.serverTickRunning = true;
     }
 
     public static void onPlayerJoined(final ServerPlayer player) {
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(player.level().getServer());
         if (session != null) StartupChunkRecovery.onPlayerJoined(player, session);
     }
 
@@ -88,7 +88,7 @@ public final class SafeSaveManager {
         if (!capturesChunk(level, key)) {
             return;
         }
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(level.getServer());
         if (session == null || session.store == null) {
             return;
         }
@@ -101,7 +101,7 @@ public final class SafeSaveManager {
         if (!capturesChunk(level, ChunkPosHelper.pack(chunk.getPos()))) {
             return;
         }
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(level.getServer());
         if (session == null || session.store == null) {
             return;
         }
@@ -125,7 +125,7 @@ public final class SafeSaveManager {
         if (!capturesChunk(level, ChunkPosHelper.pack(chunk.getPos()))) {
             return root;
         }
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(level.getServer());
         if (session == null || session.store == null) {
             return root;
         }
@@ -137,17 +137,17 @@ public final class SafeSaveManager {
     }
 
     public static void onLevelTickStart(final ServerLevel level) {
-        SafeSaveSession startupSession = SafeSaveSession.current();
+        SafeSaveSession startupSession = SafeSaveSession.of(level.getServer());
         if (startupSession != null) StartupChunkRecovery.enforceFreeze(level, startupSession);
-        if (!shouldRun() && SafeSaveLevelAccess.of(level).pendingChunks.isEmpty()) {
+        if (!shouldRun(level.getServer()) && SafeSaveLevelAccess.of(level).pendingChunks.isEmpty()) {
             return;
         }
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(level.getServer());
         if (session == null || session.store == null) {
             return;
         }
         SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
-        if (shouldRun()) {
+        if (shouldRun(level.getServer())) {
             // 活塞刻顺序重建必须在冻结期间也运行：ServerLevel.tick 本身不受 tickRateManager 门控，
             // 而 PME loadAdditional 发生在区块加载时（可能早于第一个非冻结 tick）。
             PistonManager.onLevelTickStart(level, session, levelState);
@@ -155,7 +155,7 @@ public final class SafeSaveManager {
         if (!level.tickRateManager().runsNormally()) {
             return;
         }
-        if (shouldRun() || !levelState.pendingChunks.isEmpty()) {
+        if (shouldRun(level.getServer()) || !levelState.pendingChunks.isEmpty()) {
             Set<Long> newChunks = ChunkRebuildCoordinator.rebuildNewChunks(level, session, levelState);
             EntityOrderManager.rebuildChunks(level, newChunks);
         }
@@ -167,20 +167,20 @@ public final class SafeSaveManager {
     }
 
     public static boolean isTickEndPending(MinecraftServer server) {
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(server);
         return session != null && session.serverTickRunning
                 && session.finalizedServerTick != server.getTickCount();
     }
 
     public static boolean shouldDeferChunkMapSave(ServerLevel level) {
-        SafeSaveSession session = SafeSaveSession.current();
-        return shouldRun() && session != null && !session.freezeArmed
+        SafeSaveSession session = SafeSaveSession.of(level.getServer());
+        return shouldRun(level.getServer()) && session != null && !session.freezeArmed
                 && !level.getServer().isStopped()
                 && (isTickEndPending(level.getServer()) || !canCaptureSnapshot(level));
     }
 
     public static void onServerTickEnd(final MinecraftServer server, final BooleanSupplier haveTime) {
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(server);
         if (session != null) {
             session.finalizedServerTick = server.getTickCount();
             session.serverTickRunning = false;
@@ -223,7 +223,7 @@ public final class SafeSaveManager {
 
     public static boolean deferSaveEverything(MinecraftServer server,
                                               boolean silent, boolean flush, boolean force) {
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(server);
         if (!needsTickEndSave(server, session)) return false;
         session.deferredSaveEverything = true;
         rememberSaveFlags(session, silent, flush, force);
@@ -232,7 +232,7 @@ public final class SafeSaveManager {
 
     public static boolean deferSaveAllChunks(MinecraftServer server,
                                              boolean silent, boolean flush, boolean force) {
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(server);
         if (!needsTickEndSave(server, session)) return false;
         session.deferredSaveAllChunks = true;
         rememberSaveFlags(session, silent, flush, force);
@@ -240,7 +240,7 @@ public final class SafeSaveManager {
     }
 
     private static boolean needsTickEndSave(MinecraftServer server, SafeSaveSession session) {
-        if (!shouldRun() || session == null || session.store == null
+        if (!shouldRun(server) || session == null || session.store == null
                 || session.freezeArmed || server.isStopped()) return false;
         return isTickEndPending(server);
     }
@@ -269,10 +269,10 @@ public final class SafeSaveManager {
       此后的最终 flush 时 isStopped() 已为 true，不再重采，否则会扫描到已被卸载的区块表。
      */
     private static void save(final MinecraftServer server, final boolean captureTicking) {
-        if (!shouldRun()) {
+        if (!shouldRun(server)) {
             return;
         }
-        SafeSaveSession session = SafeSaveSession.current();
+        SafeSaveSession session = SafeSaveSession.of(server);
         if (session == null || session.store == null || session.freezeArmed) {
             return;
         }

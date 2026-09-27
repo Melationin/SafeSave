@@ -1,6 +1,8 @@
 package com.carpet.safesave.safesave;
 
 import com.carpet.safesave.util.OrderSequence;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.TicketType;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -8,9 +10,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class SafeSaveSession {
 
-    private static volatile SafeSaveSession current;
-
-    public SafeSaveStore store;
+    public final SafeSaveStore store = new SafeSaveStore();
 
     public boolean freezeArmed = true;//在首刻前冻结被处理之前为true
     public boolean startupRecoveryWaiting;
@@ -32,17 +32,12 @@ public final class SafeSaveSession {
     public final OrderSequence pistonOrder = new OrderSequence();
     public final AtomicLong pistonOrderGeneration = new AtomicLong();
 
-    private SafeSaveSession() {
+    public TicketType startupLoadTicketType;
+
+    public SafeSaveSession() {
     }
 
-    public static SafeSaveSession current() {
-        return current;
-    }
-
-    public static SafeSaveSession begin() {
-        SafeSaveSession session = new SafeSaveSession();
-        session.store = new SafeSaveStore();
-        current = session;
-        return session;
+    public static SafeSaveSession of(final MinecraftServer server) {
+        return SafeSaveServerAccess.session(server);
     }
 }

@@ -4,8 +4,7 @@ import com.carpet.safesave.safesave.blockentity.PistonManager;
 import com.carpet.safesave.safesave.blockentity.PistonOrderHolder;
 import com.carpet.safesave.util.NbtView;
 import com.carpet.safesave.util.SafeSaveNbt;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
 //? if <1.21.6 {
 /*import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -13,7 +12,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 //?}
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -43,6 +41,13 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
     @Unique
     private long SS$snapshotTime = Long.MIN_VALUE;
 
+    @Unique private boolean SS$restorePending;
+    @Unique private float SS$loadedProgress = Float.NaN;
+    @Unique private float SS$loadedProgressO;
+    @Unique private long SS$loadedLastTicked;
+    @Unique private long SS$loadedSnapshotTime = Long.MIN_VALUE;
+    @Unique private long SS$loadedOrder = Long.MIN_VALUE;
+
     @Override
     public void SS$rebaseTime(long gameTime) {
         if (this.SS$snapshotTime != Long.MIN_VALUE) {
@@ -57,19 +62,29 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
         return this.SS$order;
     }
 
-    @Inject(
-            method = "<init>(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;"
-                    + "Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/Direction;ZZ)V",
-            at = @At("TAIL")
-    )
-    private void carpetExample$assignOrder(final BlockPos worldPosition,
-                                           final BlockState blockState,
-                                           final BlockState movedState,
-                                           final Direction direction,
-                                           final boolean extending,
-                                           final boolean isSourcePiston,
-                                           final CallbackInfo ci) {
-        this.SS$order = PistonManager.nextPistonOrder();
+    @Override
+    public void SS$onLevelAttached(final ServerLevel level) {
+        if (!SafeSaveNbt.enabled(level)) {
+            this.SS$restorePending = false;
+            return;
+        }
+        if (this.SS$restorePending) {
+            if (!Float.isNaN(this.SS$loadedProgress)) {
+                this.progress = this.SS$loadedProgress;
+                this.progressO = this.SS$loadedProgressO;
+            }
+            this.lastTicked = this.SS$loadedLastTicked;
+            this.SS$snapshotTime = this.SS$loadedSnapshotTime;
+            if (this.SS$loadedOrder != Long.MIN_VALUE) {
+                this.SS$order = this.SS$loadedOrder;
+                PistonManager.observePistonOrder(level, this.SS$order);
+            }
+            this.SS$restorePending = false;
+            PistonManager.markPistonTickOrderDirty(level);
+        }
+        if (this.SS$order == Long.MIN_VALUE) {
+            this.SS$order = PistonManager.nextPistonOrder(level);
+        }
     }
 
     @Inject(method = "saveAdditional", at = @At("TAIL"))
@@ -84,14 +99,17 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
                       /*final HolderLookup.Provider registries,
                       *///?}
                       final CallbackInfo ci) {
-        if (!SafeSaveNbt.enabled()) {
+        var self = (PistonMovingBlockEntity) (Object) this;
+        if (!SafeSaveNbt.enabled(self.getLevel())) {
             return;
+        }
+        if (self.getLevel() instanceof ServerLevel level) {
+            this.SS$onLevelAttached(level);
         }
         NbtView.Writer tag = SafeSaveNbt.child(NbtView.writer(output));
         tag.putFloat("progress", this.progress);
         tag.putFloat("progress_o", this.progressO);
         tag.putLong("lastTicked", this.lastTicked);
-        var self = (PistonMovingBlockEntity) (Object) this;
         if (this.SS$snapshotTime != Long.MIN_VALUE) {
             tag.putLong("snapshotGameTime", this.SS$snapshotTime);
         } else if (self.getLevel() != null) {
@@ -112,27 +130,18 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
                                     /*final HolderLookup.Provider registries,
                                     *///?}
                                     final CallbackInfo ci) {
-        if (!SafeSaveNbt.enabled()) {
-            return;
-        }
         NbtView.Reader tag = SafeSaveNbt.childOrNull(NbtView.reader(input));
         if (tag != null) {
-            float savedProgress = tag.getFloatOr("progress", Float.NaN);
-            if (!Float.isNaN(savedProgress)) {
-                this.progress = savedProgress;
-                this.progressO = tag.getFloatOr("progress_o", savedProgress);
-            }
-            this.lastTicked = tag.getLongOr("lastTicked", this.lastTicked);
-            this.SS$snapshotTime = tag.getLongOr("snapshotGameTime", Long.MIN_VALUE);
-
-            long order = tag.getLongOr("order", Long.MIN_VALUE);
-            if (order != Long.MIN_VALUE) {
-                this.SS$order = order;
-
-                PistonManager.observePistonOrder(order);
-            }
+            this.SS$loadedProgress = tag.getFloatOr("progress", Float.NaN);
+            this.SS$loadedProgressO = tag.getFloatOr("progress_o", this.SS$loadedProgress);
+            this.SS$loadedLastTicked = tag.getLongOr("lastTicked", this.lastTicked);
+            this.SS$loadedSnapshotTime = tag.getLongOr("snapshotGameTime", Long.MIN_VALUE);
+            this.SS$loadedOrder = tag.getLongOr("order", Long.MIN_VALUE);
+            this.SS$restorePending = true;
         }
-
-        PistonManager.markPistonTickOrderDirty();
+        var self = (PistonMovingBlockEntity) (Object) this;
+        if (self.getLevel() instanceof ServerLevel level) {
+            this.SS$onLevelAttached(level);
+        }
     }
 }

@@ -40,20 +40,22 @@ public final class SafeSaveCommand {
     }
 
     private static int list(final CommandSourceStack source) {
-        show(source, "safeSave", SafeSaveConfig.safeSave);
-        show(source, "ticketDuration", SafeSaveConfig.ticketDuration);
-        show(source, "unfreezeTimeout", SafeSaveConfig.unfreezeTimeout);
-        show(source, "timerFromFirstPlayer", SafeSaveConfig.timerFromFirstPlayer);
+        SafeSaveConfig config = SafeSaveConfig.of(source.getServer());
+        show(source, "safeSave", config.safeSave);
+        show(source, "ticketDuration", config.ticketDuration);
+        show(source, "unfreezeTimeout", config.unfreezeTimeout);
+        show(source, "timerFromFirstPlayer", config.timerFromFirstPlayer);
         return 1;
     }
 
     private static int set(final CommandSourceStack source, final String name, final String value) {
-        String error = SafeSaveConfig.apply(name, value);
+        SafeSaveConfig config = SafeSaveConfig.of(source.getServer());
+        String error = config.apply(name, value);
         if (error != null) {
             source.sendFailure(Component.literal(error));
             return 0;
         }
-        SafeSaveConfig.save();
+        config.save();
         show(source, name, value);
         return 1;
     }

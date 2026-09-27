@@ -7,8 +7,9 @@ public final class SafeSaveNbt {
 
     public static final String KEY_SAFE_SAVE = "safeSave";
 
-    public static boolean enabled() {
-        return com.carpet.safesave.safesave.SafeSaveManager.shouldRun();
+    public static boolean enabled(final net.minecraft.world.level.Level level) {
+        return level instanceof net.minecraft.server.level.ServerLevel serverLevel
+                && com.carpet.safesave.safesave.SafeSaveManager.shouldRun(serverLevel.getServer());
     }
 
     public static NbtView.Writer child(final NbtView.Writer output) {

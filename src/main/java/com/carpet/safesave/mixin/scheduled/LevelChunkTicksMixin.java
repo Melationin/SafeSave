@@ -8,6 +8,7 @@ import net.minecraft.world.ticks.ScheduledTick;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 
 import java.util.List;
 import java.util.Set;
@@ -22,6 +23,8 @@ import java.util.function.Predicate;
  */
 @Mixin(LevelChunkTicks.class)
 public abstract class LevelChunkTicksMixin implements SafeTickContainer {
+
+    @Unique private boolean SS$warnedUnreadable;
 
     @Shadow
     private List<SavedTick<?>> pendingTicks;
@@ -71,10 +74,12 @@ public abstract class LevelChunkTicksMixin implements SafeTickContainer {
             return self.getAll().toList();
         } catch (Exception e) {
             // 与其他 mod 的调度重写冲突时可能读不到：返回 null 让调用方跳过该区块、保留旧条目，
-            DebugLog.warnOnce("tickQueue-unreadable",
-                    "LevelChunkTicks.getAll() failed ({}) - skipping this chunk's scheduled ticks. "
-                            + "Another mod's tick scheduler rewrite is the likely cause.",
-                    e.toString());
+            if (!this.SS$warnedUnreadable) {
+                this.SS$warnedUnreadable = true;
+                DebugLog.warn("LevelChunkTicks.getAll() failed ({}) - skipping this chunk's scheduled ticks. "
+                                + "Another mod's tick scheduler rewrite is the likely cause.",
+                        e.toString());
+            }
             return null;
         }
     }

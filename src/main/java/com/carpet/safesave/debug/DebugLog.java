@@ -48,11 +48,4 @@ public final class DebugLog {
         LOG.warn("[safe-save] " + format, args);
     }
 
-    private static final java.util.Set<String> WARNED_ONCE = java.util.concurrent.ConcurrentHashMap.newKeySet();
-
-    public static void warnOnce(final String key, final String format, final Object... args) {
-        if (WARNED_ONCE.add(key)) {
-            LOG.warn("[safe-save] " + format, args);
-        }
-    }
 }

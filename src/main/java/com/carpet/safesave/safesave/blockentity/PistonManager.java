@@ -21,24 +21,17 @@ public final class PistonManager {
     private PistonManager() {
     }
 
-    public static long nextPistonOrder() {
-        SafeSaveSession session = SafeSaveSession.current();
-        return session == null ? 0L : session.pistonOrder.next();
+    public static long nextPistonOrder(final ServerLevel level) {
+        return SafeSaveSession.of(level.getServer()).pistonOrder.next();
     }
 
-    // 确保新创建的活塞严格排在所有从磁盘恢复的顺序值之后；会话未就绪时 no-op。
-    public static void observePistonOrder(final long restored) {
-        SafeSaveSession session = SafeSaveSession.current();
-        if (session != null) {
-            session.pistonOrder.observe(restored);
-        }
+    // 确保新创建的活塞严格排在本服务器从磁盘恢复的顺序值之后。
+    public static void observePistonOrder(final ServerLevel level, final long restored) {
+        SafeSaveSession.of(level.getServer()).pistonOrder.observe(restored);
     }
 
-    public static void markPistonTickOrderDirty() {
-        SafeSaveSession session = SafeSaveSession.current();
-        if (session != null) {
-            session.pistonOrderGeneration.incrementAndGet();
-        }
+    public static void markPistonTickOrderDirty(final ServerLevel level) {
+        SafeSaveSession.of(level.getServer()).pistonOrderGeneration.incrementAndGet();
     }
 
     /*
