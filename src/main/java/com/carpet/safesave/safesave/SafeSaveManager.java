@@ -1,8 +1,8 @@
 package com.carpet.safesave.safesave;
 
 import static com.carpet.safesave.util.SafeSaveNbt.KEY_SAFE_SAVE;
-import static com.carpet.safesave.util.Util.dimensionId;
 
+import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
@@ -36,27 +36,23 @@ public final class SafeSaveManager {
         return shouldRun(level.getServer()) || state.pendingChunks.containsKey(key);
     }
 
-    public static void onServerLoaded(final MinecraftServer server) {
-        if (!shouldRun(server)) {
-            return;
-        }
-        SafeSaveSession session = SafeSaveSession.of(server);
-        SafeSaveFiles.loadAll(server, session);
-    }
-
     public static void onLevelsCreated(final MinecraftServer server) {
         if (!shouldRun(server)) {
             return;
         }
         SafeSaveSession session = SafeSaveSession.of(server);
-        if (session == null || session.store == null) {
-            return;
-        }
+        int loaded = 0;
         for (ServerLevel level : server.getAllLevels()) {
-            SafeSaveStore.DimensionData data = session.store.dimensionOrNull(dimensionId(level));
-            if (data != null) {
-                ScheduledTickManager.restoreSubTickCount(level, data);
+            if (SafeSaveFiles.loadForLevel(level, session)) {
+                loaded++;
             }
+            ScheduledTickManager.restoreSubTickCount(level, SafeSaveLevelAccess.of(level).savedDimension);
+        }
+        if (loaded == 0) {
+            DebugLog.info("no {} found; this session starts from vanilla chunk ticks", SafeSaveFiles.FILE_NAME);
+        } else {
+            DebugLog.info("loaded world metadata from {} safesave file(s) (debug: serverTick={})",
+                    loaded, session.serverTickCount);
         }
     }
 
@@ -68,7 +64,7 @@ public final class SafeSaveManager {
         }
         if (session.freezeArmed) {
             session.freezeArmed = false;
-            StartupChunkRecovery.arm(server, session);
+            StartupChunkRecovery.arm(server);
         }
         StartupChunkRecovery.update(server, session);
     }
@@ -88,11 +84,7 @@ public final class SafeSaveManager {
         if (!capturesChunk(level, key)) {
             return;
         }
-        SafeSaveSession session = SafeSaveSession.of(level.getServer());
-        if (session == null || session.store == null) {
-            return;
-        }
-        ChunkNbtBridge.onChunkTagRead(level, chunkData, session, SafeSaveLevelAccess.of(level));
+        ChunkNbtBridge.onChunkTagRead(level, chunkData, SafeSaveLevelAccess.of(level));
     }
 
     public static void onChunkSerializing(final ServerLevel level,
@@ -101,11 +93,7 @@ public final class SafeSaveManager {
         if (!capturesChunk(level, ChunkPosHelper.pack(chunk.getPos()))) {
             return;
         }
-        SafeSaveSession session = SafeSaveSession.of(level.getServer());
-        if (session == null || session.store == null) {
-            return;
-        }
-        CompoundTag tag = ChunkNbtBridge.onChunkSerializing(level, chunk, session, SafeSaveLevelAccess.of(level));
+        CompoundTag tag = ChunkNbtBridge.onChunkSerializing(level, chunk, SafeSaveLevelAccess.of(level));
         ((SerializableChunkDataAccess) data).SS$setSafeSaveTag(tag);
     }
 
@@ -125,11 +113,7 @@ public final class SafeSaveManager {
         if (!capturesChunk(level, ChunkPosHelper.pack(chunk.getPos()))) {
             return root;
         }
-        SafeSaveSession session = SafeSaveSession.of(level.getServer());
-        if (session == null || session.store == null) {
-            return root;
-        }
-        CompoundTag tag = ChunkNbtBridge.onChunkSerializing(level, chunk, session, SafeSaveLevelAccess.of(level));
+        CompoundTag tag = ChunkNbtBridge.onChunkSerializing(level, chunk, SafeSaveLevelAccess.of(level));
         if (tag != null) {
             root.put(KEY_SAFE_SAVE, tag);
         }
@@ -137,26 +121,19 @@ public final class SafeSaveManager {
     }
 
     public static void onLevelTickStart(final ServerLevel level) {
-        SafeSaveSession startupSession = SafeSaveSession.of(level.getServer());
-        if (startupSession != null) StartupChunkRecovery.enforceFreeze(level, startupSession);
+        StartupChunkRecovery.enforceFreeze(level);
         if (!shouldRun(level.getServer()) && SafeSaveLevelAccess.of(level).pendingChunks.isEmpty()) {
-            return;
-        }
-        SafeSaveSession session = SafeSaveSession.of(level.getServer());
-        if (session == null || session.store == null) {
             return;
         }
         SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
         if (shouldRun(level.getServer())) {
-            // 活塞刻顺序重建必须在冻结期间也运行：ServerLevel.tick 本身不受 tickRateManager 门控，
-            // 而 PME loadAdditional 发生在区块加载时（可能早于第一个非冻结 tick）。
-            PistonManager.onLevelTickStart(level, session, levelState);
+            PistonManager.onLevelTickStart(level, levelState);
         }
         if (!level.tickRateManager().runsNormally()) {
             return;
         }
         if (shouldRun(level.getServer()) || !levelState.pendingChunks.isEmpty()) {
-            Set<Long> newChunks = ChunkRebuildCoordinator.rebuildNewChunks(level, session, levelState);
+            Set<Long> newChunks = ChunkRebuildCoordinator.rebuildNewChunks(level, levelState);
             EntityOrderManager.rebuildChunks(level, newChunks);
         }
     }
@@ -240,7 +217,7 @@ public final class SafeSaveManager {
     }
 
     private static boolean needsTickEndSave(MinecraftServer server, SafeSaveSession session) {
-        if (!shouldRun(server) || session == null || session.store == null
+        if (!shouldRun(server) || session == null
                 || session.freezeArmed || server.isStopped()) return false;
         return isTickEndPending(server);
     }
@@ -273,12 +250,9 @@ public final class SafeSaveManager {
             return;
         }
         SafeSaveSession session = SafeSaveSession.of(server);
-        if (session == null || session.store == null || session.freezeArmed) {
+        if (session == null || session.freezeArmed) {
             return;
         }
-        if (captureTicking) {
-            StartupChunkRecovery.captureTicking(server, session);
-        }
-        SafeSaveFiles.saveAll(server, session);
+        SafeSaveFiles.saveAll(server, session, captureTicking);
     }
 }

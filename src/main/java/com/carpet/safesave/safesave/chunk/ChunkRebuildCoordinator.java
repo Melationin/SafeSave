@@ -3,7 +3,6 @@ package com.carpet.safesave.safesave.chunk;
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
-import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
@@ -28,7 +27,6 @@ public final class ChunkRebuildCoordinator {
     }
 
     public static Set<Long> rebuildNewChunks(final ServerLevel level,
-                                             final SafeSaveSession session,
                                              final SafeSaveLevelState levelState) {
         if (!level.tickRateManager().runsNormally()) {
             return Set.of();
@@ -71,7 +69,7 @@ public final class ChunkRebuildCoordinator {
                 continue;
             }
             try {
-                ScheduledTickManager.restoreChunkTicks(level, key, snapshot, block, fluid, session, levelState);
+                ScheduledTickManager.restoreChunkTicks(level, key, snapshot, block, fluid, levelState);
             } catch (Exception e) {
                 levelState.pendingChunks.remove(key);
                 DebugLog.warn("{}: failed to restore scheduled ticks for chunk {}, dropping its snapshot: {}",
@@ -90,7 +88,7 @@ public final class ChunkRebuildCoordinator {
         if (!candidates.isEmpty() && DebugLog.DEBUG) {
             DebugLog.debug("{}: rebuild tick start - {} chunk(s) to rebuild ({} newly loaded); {} rebuilt, {} tick(s) restored so far, {} dropped",
                     dimension, candidates.size(), newKeys.size(), rebuilt,
-                    session.restoredTickCount.get(), session.droppedTickCount.get());
+                    levelState.restoredTickCount.get(), levelState.droppedTickCount.get());
         }
         return newKeys;
     }

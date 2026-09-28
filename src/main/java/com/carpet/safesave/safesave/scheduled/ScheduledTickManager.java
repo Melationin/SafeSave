@@ -3,8 +3,8 @@ package com.carpet.safesave.safesave.scheduled;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.util.ChunkPosHelper;
+import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
-import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
@@ -50,17 +50,16 @@ public final class ScheduledTickManager {
                                          final SafeSaveStore.ChunkSnapshot snapshot,
                                          final Object blockContainer,
                                          final Object fluidContainer,
-                                         final SafeSaveSession session,
                                          final SafeSaveLevelState levelState) {
-        warnIfStale(level, session, levelState);
+        warnIfStale(level, levelState);
         long currentGameTime = level.getGameTime();
         int keptBlock = applyTicks((TickContainerAccess<Block>) blockContainer, snapshot.blockTicks(),
                 BuiltInRegistries.BLOCK, ((SafeTickContainer) blockContainer).SS$snapshotQueue(),
-                snapshot.snapshotGameTime(), currentGameTime, session);
+                snapshot.snapshotGameTime(), currentGameTime, levelState);
 
         int keptFluid = applyTicks((TickContainerAccess<Fluid>) fluidContainer, snapshot.fluidTicks(),
                 BuiltInRegistries.FLUID, ((SafeTickContainer) fluidContainer).SS$snapshotQueue(),
-                snapshot.snapshotGameTime(), currentGameTime, session);
+                snapshot.snapshotGameTime(), currentGameTime, levelState);
 
         if (DebugLog.DEBUG) {
             DebugLog.debug("{} {}: restored {} block + {} fluid tick(s) (expired ticks rebased from gameTime {}; kept {} pre-existing)",
@@ -71,11 +70,10 @@ public final class ScheduledTickManager {
     }
 
 
-    private static void warnIfStale(final ServerLevel level, final SafeSaveSession session,
-                                    final SafeSaveLevelState levelState) {
+    private static void warnIfStale(final ServerLevel level, final SafeSaveLevelState levelState) {
         String dimension = dimensionId(level);
-        SafeSaveStore.DimensionData data = session.store.dimensionOrNull(dimension);
-        if (data == null || data.gameTime == Long.MIN_VALUE || levelState.staleWarned) {
+        SafeSaveStore.DimensionData data = SafeSaveLevelAccess.of(level).savedDimension;
+        if (data.gameTime == Long.MIN_VALUE || levelState.staleWarned) {
             return;
         }
         long live = level.getGameTime();
@@ -96,12 +94,12 @@ public final class ScheduledTickManager {
                                       final List<?> keep,
                                       final long snapshotGameTime,
                                       final long currentGameTime,
-                                      final SafeSaveSession session) {
+                                      final SafeSaveLevelState levelState) {
         List<ScheduledTick<T>> ticks = new ArrayList<>(saved.size());
         for (SafeTick entry : saved) {
             Identifier id = Identifier.tryParse(entry.typeId());
             if (id == null || !registry.containsKey(id)) {
-                session.droppedTickCount.incrementAndGet();
+                levelState.droppedTickCount.incrementAndGet();
                 DebugLog.warn("dropping scheduled tick for unknown type '{}' at ({},{},{})",
                         entry.typeId(), entry.x(), entry.y(), entry.z());
                 continue;
@@ -121,7 +119,7 @@ public final class ScheduledTickManager {
                     entry.subTickOrder()));
         }
         ((SafeTickContainer) container).SS$replaceAll(ticks);
-        session.restoredTickCount.addAndGet(ticks.size());
+        levelState.restoredTickCount.addAndGet(ticks.size());
 
         int kept = 0;
         if (keep != null) {

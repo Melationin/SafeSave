@@ -5,123 +5,86 @@ import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveSession;
-import com.carpet.safesave.safesave.SafeSaveStore;
-import com.carpet.safesave.safesave.scheduled.TickContainers;
-import it.unimi.dsi.fastutil.longs.Long2ByteMap;
-import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.level.Ticket;
-import net.minecraft.server.level.TicketType;
-import net.minecraft.world.level.ChunkPos;
-//? if <1.21.5 {
-/*import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import net.minecraft.server.level.ChunkHolder;
-import net.minecraft.server.level.DistanceManager;
-import net.minecraft.util.Unit;
-*///?}
 
-import static com.carpet.safesave.util.Util.dimensionId;
 
 
 public final class StartupChunkRecovery {
 
-    //? if <1.21.5 {
-    /*private static final TicketType<Unit> SSTicketType =
-        TicketType.create("safesave_startup_load", (first, second) -> 0);
-    *///?} else if < 1.21.9{
-    /*private static final TicketType SSTicketType =
-        new TicketType(0L, false, TicketType.TicketUse.LOADING_AND_SIMULATION);
-    *///?} else {
-    private static final TicketType SSTicketType =
-        new TicketType(0, TicketType.FLAG_LOADING|TicketType.FLAG_SIMULATION| TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
-    //?}
-
     private StartupChunkRecovery() {}
 
-    private static final long UNION_WINDOW_TICKS = 10;
-
-    public static void arm(MinecraftServer server, SafeSaveSession session) {
-
+    public static void arm(final MinecraftServer server) {
+        // 超时为 0 时完全不设屏障：不冻结，也不挂载入票。
         if (SafeSaveConfig.of(server).unfreezeTimeout <= 0) {
             DebugLog.info("startup loading barrier disabled");
             return;
         }
         int total = 0;
         for (ServerLevel level : server.getAllLevels()) {
-            SafeSaveStore.DimensionData saved = session.store.dimensionOrNull(dimensionId(level));
-            if (saved == null) continue;
-            for (Long2ByteMap.Entry entry : saved.tickingChunks.long2ByteEntrySet()) {
-                if (entry.getByteValue() == 31 || entry.getByteValue() == 32) total++;
-            }
+            total += LevelStartupBarrier.arm(level);
         }
         if (total == 0) {
             DebugLog.info("no level-31/32 chunks were recorded; startup needs no loading barrier");
             return;
         }
         server.tickRateManager().setFrozen(true);
-        session.startupRecoveryWaiting = true;
-        session.startupTicketsHeld = true;
-        for (ServerLevel level : server.getAllLevels()) {
-            SafeSaveStore.DimensionData saved = session.store.dimensionOrNull(dimensionId(level));
-            if (saved == null) continue;
-            SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-            for (Long2ByteMap.Entry entry : saved.tickingChunks.long2ByteEntrySet()) {
-                byte ticketLevel = entry.getByteValue();
-                if (ticketLevel != 31 && ticketLevel != 32) continue;
-                long key = entry.getLongKey();
-                state.startupTickets.put(key, ticketLevel);
-                addStartupTicket(level, session, key, ticketLevel);
-           }
-            level.getChunkSource().runDistanceManagerUpdates();
-       }
-         DebugLog.info("startup frozen; loading {} previously ticking chunk(s), forced release after {} server ticks from the first real player",
+        DebugLog.info("startup frozen; loading {} previously ticking chunk(s), forced release after {} server ticks from the first real player",
                 total, Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout));
     }
 
-    public static void update(MinecraftServer server, SafeSaveSession session) {
-        if (!session.startupRecoveryWaiting && !session.startupTicketsHeld) {
-            return;
-        }
+    public static void update(final MinecraftServer server, final SafeSaveSession session) {
         int now = server.getTickCount();
-        if (session.startupRecoveryWaiting) {
+        boolean pending = false;
+        boolean allReady = true;
+        int total = 0;
+        int loaded = 0;
+        for (ServerLevel level : server.getAllLevels()) {
+            if (!SafeSaveLevelAccess.of(level).startupBarrierPending) {
+                continue;
+            }
+            pending = true;
+            LevelStartupBarrier.LoadStatus status = LevelStartupBarrier.status(level);
+            total += status.total();
+            loaded += status.loaded();
+            if (!status.isReady()) {
+                allReady = false;
+            }
+        }
+        boolean playerJoined = session.firstRealPlayerTick >= 0;
+        if (pending) {
             if (!server.tickRateManager().isFrozen()) {
                 server.tickRateManager().setFrozen(true);
                 DebugLog.warn("startup loading barrier restored the server freeze before all targets were ready");
             }
-            LoadStatus status = loadStatus(server);
-          boolean playerJoined = session.firstRealPlayerTick >= 0;
-            boolean chunksReady = status.loaded == status.total;
-            if (playerJoined && chunksReady) {
+            if (playerJoined && allReady) {
                 finish(server, session, "after all chunks loaded");
             } else if (playerJoined
                     && now - session.firstRealPlayerTick >= Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout)) {
-                DebugLog.warn("startup chunk wait timed out: {}/{} loaded", status.loaded, status.total);
+                DebugLog.warn("startup chunk wait timed out: {}/{} loaded", loaded, total);
                 finish(server, session, "after the loading timeout");
             } else if (now - session.startupLastLogTick >= 100) {
                 session.startupLastLogTick = now;
-                DebugLog.info("startup chunk wait: {}/{} loaded{}", status.loaded, status.total,
+                DebugLog.info("startup chunk wait: {}/{} loaded{}", loaded, total,
                         playerJoined ? "" : " (waiting for the first real player)");
             }
         }
-        if (session.startupTicketsHeld && !session.startupRecoveryWaiting) {
-            int origin = SafeSaveConfig.of(server).timerFromFirstPlayer
-                    ? session.firstRealPlayerTick : session.unfreezeTick;
-            if (origin >= 0 && now - origin >= Math.max(0, SafeSaveConfig.of(server).ticketDuration)) {
-                releaseTickets(server, session);
-            }
+        int origin = SafeSaveConfig.of(server).timerFromFirstPlayer
+                ? session.firstRealPlayerTick : session.unfreezeTick;
+        if (origin >= 0 && now - origin >= Math.max(0, SafeSaveConfig.of(server).ticketDuration)) {
+            releaseTickets(server);
         }
     }
 
-    public static void onPlayerJoined(ServerPlayer player, SafeSaveSession session) {
+    public static void onPlayerJoined(final ServerPlayer player, final SafeSaveSession session) {
         if (player.getClass() != ServerPlayer.class) return;
         MinecraftServer server = player.level().getServer();
+        if (server == null) return;
         if (session.firstRealPlayerTick < 0) session.firstRealPlayerTick = server.getTickCount();
-        if (session.startupRecoveryWaiting) {
+        if (anyBarrierPending(server)) {
             player.sendSystemMessage(Component.literal(
                     "[SafeSave] Loading chunks active at the last save. Game ticks are frozen; the wait lasts at most "
                             + Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout) + " server ticks after the first real player joins.")
@@ -129,147 +92,45 @@ public final class StartupChunkRecovery {
         }
     }
 
-    // 只在保存时采集，且关闭路径必须先于原版的区块卸载执行（见 SafeSaveManager.saveAtShutdown）。
-    public static void captureTicking(MinecraftServer server, SafeSaveSession session) {
-        if (session.startupRecoveryWaiting) return;
-        for (ServerLevel level : server.getAllLevels()) {
-            var source = level.getChunkSource();
-            for (ServerPlayer player : level.players()) {
-                if (!player.isRemoved()
-                        && player.getLastSectionPos().asLong() != SectionPos.of(player).asLong()) {
-                    source.move(player);
-                }
-            }
-            source.runDistanceManagerUpdates();
-            Long2ByteOpenHashMap fresh = new Long2ByteOpenHashMap();
-            //? if <1.21.5 {
-            /*// 层级 31 = 实体刻、32 = 仅方块刻，实体刻是方块刻的子集，所以必须先判实体刻。
-            DistanceManager distanceManager = source.chunkMap.getDistanceManager();
-            for (Long2ObjectMap.Entry<ChunkHolder> holder : source.chunkMap.visibleChunkMap.long2ObjectEntrySet()) {
-                long key = holder.getLongKey();
-                if (distanceManager.inEntityTickingRange(key)) {
-                    fresh.put(key, (byte) 31);
-                } else if (distanceManager.inBlockTickingRange(key)) {
-                    fresh.put(key, (byte) 32);
-                }
-            }
-            *///?} else {
-            for (Long2ByteMap.Entry entry : source.chunkMap.getDistanceManager()
-                    .simulationChunkTracker.chunks.long2ByteEntrySet()) {
-                byte simulationLevel = entry.getByteValue();
-                if (simulationLevel <= 32) {
-                    fresh.put(entry.getLongKey(), simulationLevel <= 31 ? (byte)31 : (byte)32);
-                }
-            }
-            //?}
-            SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-            long now = level.getGameTime();
-            Long2ByteOpenHashMap levels = fresh;
-            if (state.tickingSnapshotAvailable
-                    && now - state.lastTickingCaptureGameTime <= UNION_WINDOW_TICKS) {
-                levels = union(state.tickingChunksAtTickEnd, fresh);
-                if (levels.size() != state.tickingChunksAtTickEnd.size()) {
-                    DebugLog.info("{}: ticking list changed within {} tick(s) of the previous capture ({} -> {}); "
-                                    + "kept the union of {} chunk(s)",
-                            dimensionId(level), UNION_WINDOW_TICKS,
-                            state.tickingChunksAtTickEnd.size(), fresh.size(), levels.size());
-                }
-            }
-            state.tickingChunksAtTickEnd = levels;
-            state.lastTickingCaptureGameTime = now;
-            state.tickingSnapshotAvailable = true;
-        }
-    }
-
-    private static Long2ByteOpenHashMap union(final Long2ByteOpenHashMap previous,
-                                              final Long2ByteOpenHashMap fresh) {
-        Long2ByteOpenHashMap merged = new Long2ByteOpenHashMap(previous);
-        for (Long2ByteMap.Entry entry : fresh.long2ByteEntrySet()) {
-            long key = entry.getLongKey();
-            byte value = entry.getByteValue();
-            if (merged.containsKey(key)) {
-                merged.put(key, (byte) Math.min(merged.get(key), value));
-            } else {
-                merged.put(key, value);
-            }
-        }
-        return merged;
-    }
-
-    private static LoadStatus loadStatus(MinecraftServer server) {
-        int total = 0;
-        int loaded = 0;
-        for (ServerLevel level : server.getAllLevels()) {
-            var source = level.getChunkSource();
-            for (Long2ByteMap.Entry entry : SafeSaveLevelAccess.of(level).startupTickets.long2ByteEntrySet()) {
-                total++;
-                long key = entry.getLongKey();
-                if (source.getChunkNow(ChunkPos.getX(key), ChunkPos.getZ(key)) != null
-                        && TickContainers.isReady(TickContainers.blockContainers(level).get(key),
-                            TickContainers.fluidContainers(level).get(key))
-                        && (entry.getByteValue() != 31 || level.areEntitiesLoaded(key))) {
-                    loaded++;
-                }
-            }
-        }
-        return new LoadStatus(total, loaded);
-    }
-
-    public static void enforceFreeze(ServerLevel level, SafeSaveSession session) {
-        if (session.startupRecoveryWaiting && !level.tickRateManager().isFrozen()) {
+    public static void enforceFreeze(final ServerLevel level) {
+        if (SafeSaveLevelAccess.of(level).startupBarrierPending
+                && !level.tickRateManager().isFrozen()) {
             level.getServer().tickRateManager().setFrozen(true);
         }
     }
 
-    private static void finish(MinecraftServer server, SafeSaveSession session, String reason) {
+    private static boolean anyBarrierPending(final MinecraftServer server) {
+        for (ServerLevel level : server.getAllLevels()) {
+            if (SafeSaveLevelAccess.of(level).startupBarrierPending) {
+                return true;
+            }
+        }
+        return false;
+    }
 
-        session.startupRecoveryWaiting = false;
+    private static void finish(final MinecraftServer server, final SafeSaveSession session, final String reason) {
+        for (ServerLevel level : server.getAllLevels()) {
+            SafeSaveLevelAccess.of(level).startupBarrierPending = false;
+        }
         session.unfreezeTick = server.getTickCount();
-        server.tickRateManager().setFrozen(false);
+       // server.tickRateManager().setFrozen(false);
         DebugLog.info("startup unfroze {} at server tick {}", reason, session.unfreezeTick);
         Component message = Component.literal("[SafeSave] Startup loading wait ended; game ticks have resumed.")
                 .withStyle(ChatFormatting.GREEN);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) player.sendSystemMessage(message);
     }
 
-    private static void releaseTickets(MinecraftServer server, SafeSaveSession session) {
+    private static void releaseTickets(final MinecraftServer server) {
         int released = 0;
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-            for (Long2ByteMap.Entry entry : state.startupTickets.long2ByteEntrySet()) {
-                removeStartupTicket(level, session, entry.getLongKey(), entry.getByteValue());
-                released++;
+            if (!state.startupTicketsHeld || state.startupBarrierPending) {
+                continue;
             }
-            state.startupTickets.clear();
-            level.getChunkSource().runDistanceManagerUpdates();
+            released += LevelStartupBarrier.releaseTickets(level);
         }
-        session.startupTicketsHeld = false;
-        DebugLog.info("released {} startup loading ticket(s) at server tick {}", released, server.getTickCount());
-    }
-
-    private record LoadStatus(int total, int loaded) {}
-
-    private static void addStartupTicket(ServerLevel level, SafeSaveSession session,
-                                         long chunkPos, byte ticketLevel) {
-        //? if <1.21.5 {
-        /*level.getChunkSource().chunkMap.getDistanceManager()
-                .addTicket((TicketType<Unit>) SSTicketType,
-                        new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
-        *///?} else {
-        level.getChunkSource().ticketStorage.addTicket(chunkPos,
-                new Ticket(SSTicketType, ticketLevel));
-        //?}
-    }
-
-    private static void removeStartupTicket(ServerLevel level, SafeSaveSession session,
-                                            long chunkPos, byte ticketLevel) {
-        //? if <1.21.5 {
-        /*level.getChunkSource().chunkMap.getDistanceManager()
-                .removeTicket((TicketType<Unit>) SSTicketType,
-                        new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
-        *///?} else {
-        level.getChunkSource().ticketStorage.removeTicket(chunkPos,
-                new Ticket(SSTicketType, ticketLevel));
-        //?}
+        if (released > 0) {
+            DebugLog.info("released {} startup loading ticket(s) at server tick {}", released, server.getTickCount());
+        }
     }
 }

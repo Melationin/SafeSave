@@ -33,10 +33,8 @@ public abstract class MinecraftServerMixin implements SafeSaveServerAccess {
 
     @Inject(method = "loadLevel", at = @At("HEAD"))
     private void SS$onServerLoaded(final CallbackInfo ci) {
-        MinecraftServer server = (MinecraftServer) (Object) this;
-        // 必须先于任何 shouldRun(server) 判定读档。
-        this.SS$config.load(server);
-        SafeSaveManager.onServerLoaded(server);
+        // 必须先于任何 shouldRun(server) 判定读档。level 数据在 prepareLevels 阶段各自读取。
+        this.SS$config.load((MinecraftServer) (Object) this);
     }
 
     @Inject(method = "stopServer", at = @At("HEAD"))

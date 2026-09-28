@@ -8,7 +8,6 @@ import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.util.TagCompat;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
-import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
@@ -22,10 +21,7 @@ public final class ChunkNbtBridge {
     }
 
     public static void onChunkTagRead(final ServerLevel level, final CompoundTag chunkData,
-                                      final SafeSaveSession session, final SafeSaveLevelState levelState) {
-        if (session.store == null) {
-            return;
-        }
+                                      final SafeSaveLevelState levelState) {
         long key = ChunkPosHelper.pack(chunkData.getIntOr("xPos", 0), chunkData.getIntOr("zPos", 0));
         CompoundTag safeSave = TagCompat.compound(chunkData, KEY_SAFE_SAVE).orElse(null);
         if (safeSave == null) {
@@ -46,11 +42,7 @@ public final class ChunkNbtBridge {
     }
 
     public static CompoundTag onChunkSerializing(final ServerLevel level, final ChunkAccess chunk,
-                                                 final SafeSaveSession session,
                                                  final SafeSaveLevelState levelState) {
-        if (session.store == null) {
-            return null;
-        }
         if (!(chunk instanceof LevelChunk levelChunk)) {
             return null;
         }

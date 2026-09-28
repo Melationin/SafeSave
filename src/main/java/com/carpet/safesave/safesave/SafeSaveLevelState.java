@@ -7,8 +7,12 @@ import it.unimi.dsi.fastutil.longs.LongSet;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class SafeSaveLevelState {
+
+    public SafeSaveStore.DimensionData savedDimension = new SafeSaveStore.DimensionData();
 
     public LongSet knownChunks = new LongOpenHashSet();
 
@@ -29,12 +33,19 @@ public final class SafeSaveLevelState {
 
     public final OrderSequence entityOrder = new OrderSequence();
 
-    // 上次保存时的模拟层级 31/32。
     public Long2ByteOpenHashMap tickingChunksAtTickEnd = new Long2ByteOpenHashMap();
     public boolean tickingSnapshotAvailable;
     // 上次采集时的 gameTime，用于区分真实变化与卸载造成的假象。
     public long lastTickingCaptureGameTime = Long.MIN_VALUE;
 
-    // 从上一份 side file 恢复出来的、仅用于加载的票据。
     public final Long2ByteOpenHashMap startupTickets = new Long2ByteOpenHashMap();
+
+    public boolean startupBarrierPending;
+    public boolean startupTicketsHeld;
+
+    public final OrderSequence pistonOrder = new OrderSequence();
+    public final AtomicLong pistonOrderGeneration = new AtomicLong();
+
+    public final AtomicInteger restoredTickCount = new AtomicInteger();
+    public final AtomicInteger droppedTickCount = new AtomicInteger();
 }

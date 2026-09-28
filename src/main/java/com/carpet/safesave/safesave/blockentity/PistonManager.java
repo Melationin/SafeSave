@@ -2,8 +2,8 @@ package com.carpet.safesave.safesave.blockentity;
 
 
 import com.carpet.safesave.debug.DebugLog;
+import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
-import com.carpet.safesave.safesave.SafeSaveSession;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
@@ -22,15 +22,15 @@ public final class PistonManager {
     }
 
     public static long nextPistonOrder(final ServerLevel level) {
-        return SafeSaveSession.of(level.getServer()).pistonOrder.next();
+        return SafeSaveLevelAccess.of(level).pistonOrder.next();
     }
 
     public static void observePistonOrder(final ServerLevel level, final long restored) {
-        SafeSaveSession.of(level.getServer()).pistonOrder.observe(restored);
+        SafeSaveLevelAccess.of(level).pistonOrder.observe(restored);
     }
 
     public static void markPistonTickOrderDirty(final ServerLevel level) {
-        SafeSaveSession.of(level.getServer()).pistonOrderGeneration.incrementAndGet();
+        SafeSaveLevelAccess.of(level).pistonOrderGeneration.incrementAndGet();
     }
 
     /*
@@ -38,9 +38,8 @@ public final class PistonManager {
      * 本身不受门控）：若活塞从 NBT 加载过（代数已推进），重建该维度活塞刻顺序。
      */
     public static void onLevelTickStart(final ServerLevel level,
-                                        final SafeSaveSession session,
                                         final SafeSaveLevelState levelState) {
-        long generation = session.pistonOrderGeneration.get();
+        long generation = levelState.pistonOrderGeneration.get();
         if (levelState.pistonOrderRebuiltAt < generation) {
             levelState.pistonOrderRebuiltAt = generation;
             // 包含物理卸载前被复活的区块，它们的 NBT 加载钩子不会触发。

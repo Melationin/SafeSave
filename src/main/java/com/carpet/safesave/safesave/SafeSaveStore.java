@@ -12,7 +12,6 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.LongArrayTag;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,41 +58,8 @@ public final class SafeSaveStore {
         public Long2ByteOpenHashMap tickingChunks = new Long2ByteOpenHashMap();
     }
 
-    private final Map<String, DimensionData> dimensions = new LinkedHashMap<>();
-    private int serverTickCount = -1;
 
-    public DimensionData dimension(final String dimensionId) {
-        return this.dimensions.computeIfAbsent(dimensionId, k -> new DimensionData());
-    }
-
-    public DimensionData dimensionOrNull(final String dimensionId) {
-        return this.dimensions.get(dimensionId);
-    }
-
-    public Map<String, DimensionData> dimensions() {
-        return this.dimensions;
-    }
-
-    public int serverTickCount() {
-        return this.serverTickCount;
-    }
-
-    public void setServerTickCount(final int serverTickCount) {
-        this.serverTickCount = serverTickCount;
-    }
-
-    public boolean isEmpty() {
-        return this.dimensions.isEmpty();
-    }
-
-    public Map<String, Long> debugGameTimes() {
-        Map<String, Long> out = new HashMap<>();
-        for (Map.Entry<String, DimensionData> entry : this.dimensions.entrySet()) {
-            if (entry.getValue().gameTime != Long.MIN_VALUE) {
-                out.put(entry.getKey(), entry.getValue().gameTime);
-            }
-        }
-        return out;
+    public record ParsedFile(int serverTickCount, Map<String, DimensionData> dimensions) {
     }
 
     public static CompoundTag saveChunkData(final ChunkSnapshot snapshot) {
@@ -130,12 +96,13 @@ public final class SafeSaveStore {
         return new ChunkSnapshot(blockTicks, fluidTicks, chunkEvents, snapshotGameTime);
     }
 
-    public CompoundTag saveDimension(final String dimensionId, final DimensionData data) {
+    public static CompoundTag saveDimension(final int serverTickCount, final String dimensionId,
+                                            final DimensionData data) {
         CompoundTag root = new CompoundTag();
         root.putInt(KEY_VERSION, FORMAT_VERSION);
 
         CompoundTag debug = new CompoundTag();
-        debug.putInt(KEY_DEBUG_SERVER_TICK, this.serverTickCount);
+        debug.putInt(KEY_DEBUG_SERVER_TICK, serverTickCount);
 
         CompoundTag levelTag = new CompoundTag();
         levelTag.putString(KEY_DIMENSION, dimensionId);
@@ -160,16 +127,17 @@ public final class SafeSaveStore {
         return root;
     }
 
-    public static SafeSaveStore load(final CompoundTag root) {
-        SafeSaveStore store = new SafeSaveStore();
+    public static ParsedFile load(final CompoundTag root) {
         int version = root.getIntOr(KEY_VERSION, 0);
         if (version != FORMAT_VERSION && version != 5) {
 
             throw new IllegalStateException("unsupported safe-save format version " + version
                     + " (expected " + FORMAT_VERSION + ")");
         }
-        TagCompat.compound(root, KEY_DEBUG).ifPresent(
-                debug -> store.setServerTickCount(debug.getIntOr(KEY_DEBUG_SERVER_TICK, -1)));
+
+        Map<String, DimensionData> dimensions = new LinkedHashMap<>();
+        CompoundTag debug = TagCompat.compound(root, KEY_DEBUG).orElse(null);
+        int serverTickCount = debug == null ? -1 : debug.getIntOr(KEY_DEBUG_SERVER_TICK, -1);
 
         ListTag levels = root.getListOrEmpty(KEY_LEVELS);
         for (int i = 0; i < levels.size(); i++) {
@@ -179,7 +147,7 @@ public final class SafeSaveStore {
                 if (dimensionId.isEmpty()) {
                     return;
                 }
-                DimensionData data = store.dimension(dimensionId);
+                DimensionData data = dimensions.computeIfAbsent(dimensionId, k -> new DimensionData());
                 data.subTickCount = levelTag.getLongOr(KEY_SUB_TICK_COUNT, -1L);
                 data.gameTime = levelTag.getLongOr(KEY_DEBUG_GAME_TIME, Long.MIN_VALUE);
                 if (version >= 6) {
@@ -192,7 +160,7 @@ public final class SafeSaveStore {
                 }
             });
         }
-        return store;
+        return new ParsedFile(serverTickCount, dimensions);
     }
 
     private static ListTag saveTicks(final List<SafeTick> ticks) {
