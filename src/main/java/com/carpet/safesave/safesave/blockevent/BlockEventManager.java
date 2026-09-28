@@ -67,7 +67,6 @@ public final class BlockEventManager {
         List<SafeBlockEvent> valid = new ArrayList<>(saved.size());
         for (SafeBlockEvent entry : saved) {
             Identifier id = Identifier.tryParse(entry.blockId());
-            // BLOCK 是 DefaultedRegistry：getValue() 遇到未知 id 会悄悄返回 AIR。
             if (id == null || !BuiltInRegistries.BLOCK.containsKey(id)) {
                 DebugLog.warn("dropping block event for unknown block '{}' at ({},{},{})",
                         entry.blockId(), entry.x(), entry.y(), entry.z());

@@ -31,14 +31,11 @@ public final class ScheduledTickManager {
     private ScheduledTickManager() {
     }
 
-    /*
-     必须在任何区块解包之前恢复计数器，否则新调度的刻会与恢复的 subTickOrder 冲突。
-     */
+
     public static void restoreSubTickCount(final ServerLevel level, final SafeSaveStore.DimensionData data) {
         if (data.subTickCount >= 0L) {
 
             long current = level.subTickCount;
-            // 绝不让计数器倒退：已发出的值必须保持唯一
             if (data.subTickCount > current) {
                 level.subTickCount = data.subTickCount;
                 DebugLog.info("{}: restored Level.subTickCount {} -> {}",
@@ -60,9 +57,11 @@ public final class ScheduledTickManager {
         int keptBlock = applyTicks((TickContainerAccess<Block>) blockContainer, snapshot.blockTicks(),
                 BuiltInRegistries.BLOCK, ((SafeTickContainer) blockContainer).SS$snapshotQueue(),
                 snapshot.snapshotGameTime(), currentGameTime, session);
+
         int keptFluid = applyTicks((TickContainerAccess<Fluid>) fluidContainer, snapshot.fluidTicks(),
                 BuiltInRegistries.FLUID, ((SafeTickContainer) fluidContainer).SS$snapshotQueue(),
                 snapshot.snapshotGameTime(), currentGameTime, session);
+
         if (DebugLog.DEBUG) {
             DebugLog.debug("{} {}: restored {} block + {} fluid tick(s) (expired ticks rebased from gameTime {}; kept {} pre-existing)",
                     dimensionId(level), ChunkPosHelper.unpack(packedChunkPos),
@@ -101,8 +100,6 @@ public final class ScheduledTickManager {
         List<ScheduledTick<T>> ticks = new ArrayList<>(saved.size());
         for (SafeTick entry : saved) {
             Identifier id = Identifier.tryParse(entry.typeId());
-            // BLOCK/FLUID 是 DefaultedRegistry：getValue() 遇到未知 id 会悄悄返回 AIR/EMPTY，
-            // 因此必须显式检查注册表成员资格。
             if (id == null || !registry.containsKey(id)) {
                 session.droppedTickCount.incrementAndGet();
                 DebugLog.warn("dropping scheduled tick for unknown type '{}' at ({},{},{})",
@@ -154,7 +151,6 @@ public final class ScheduledTickManager {
         if (blockContainer.SS$hasPendingTicks() || fluidContainer.SS$hasPendingTicks()) {
             return null;
         }
-        // 绝大多数区块一个计划刻都没有，此时无需取队列再排序。
         if (blockContainer.SS$isEmpty() && fluidContainer.SS$isEmpty()) {
             return EMPTY;
         }
@@ -182,7 +178,6 @@ public final class ScheduledTickManager {
                     tick.priority().getValue(),
                     tick.subTickOrder()));
         }
-        // 排序仅为便于检查文件；恢复使用存储的字段。
         out.sort((a, b) -> {
             int cmp = Long.compare(a.triggerTick(), b.triggerTick());
             if (cmp != 0) {

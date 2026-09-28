@@ -18,8 +18,6 @@ public final class ChunkSnapshotManager {
         long key = ChunkPosHelper.pack(chunk.getPos());
         SafeSaveStore.ChunkSnapshot pending = state.pendingChunks.get(key);
         if (pending != null) return pending;
-        // 世界 tick 进行中、或本服务器刻尚未结算时，现场队列不代表一个完整刻的状态；
-        // 返回 null 交原版序列化现场队列
         if (!SafeSaveManager.canCaptureSnapshot(level)) return null;
         if (!(chunk.getBlockTicks() instanceof SafeTickContainer)
                 || !(chunk.getFluidTicks() instanceof SafeTickContainer)) return null;

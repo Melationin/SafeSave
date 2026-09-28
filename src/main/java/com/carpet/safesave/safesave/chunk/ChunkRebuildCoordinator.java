@@ -44,7 +44,6 @@ public final class ChunkRebuildCoordinator {
             }
         }
 
-        // candidates 的键只能来自 pendingChunks，为空时后面整段重建都是空转。
         if (levelState.pendingChunks.isEmpty()) {
             levelState.knownChunks = ready;
             return newKeys;
@@ -79,7 +78,6 @@ public final class ChunkRebuildCoordinator {
                         dimension, ChunkPosHelper.unpack(key), e.toString());
                 continue;
             }
-            // 恢复成功后才移除快照。
             levelState.pendingChunks.remove(key);
             rebuilt++;
             blockEventsToRestore.addAll(snapshot.blockEvents());

@@ -36,12 +36,7 @@ public final class SafeSaveStore {
     private static final String KEY_CHUNK_BLOCK_EVENTS = "block_events";
     private static final String KEY_SNAPSHOT_GAME_TIME = "snapshot_game_time";//保存快照时的 gameTime；空值为Long.MIN_VALUE
 
-    /*
-     * snapshotGameTime 只用于计划刻的顺延重锚定（见 ScheduledTickManager）：
-     * 区块卸载期间游戏时间继续走，重新加载时已过期的绝对触发时刻需要按保存时的剩余间隔顺延，
-     * 语义等价于原版 SavedTick.delay 的重新锚定。Long.MIN_VALUE 表示缺失
-     * （旧区块数据），恢复时保持绝对触发时刻不变。
-     */
+
     public record ChunkSnapshot(List<SafeTick> blockTicks,
                                 List<SafeTick> fluidTicks,
                                 List<SafeBlockEvent> blockEvents,

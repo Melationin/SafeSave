@@ -32,7 +32,6 @@ public final class SafeSaveSession {
     public final OrderSequence pistonOrder = new OrderSequence();
     public final AtomicLong pistonOrderGeneration = new AtomicLong();
 
-    public TicketType startupLoadTicketType;
 
     public SafeSaveSession() {
     }

@@ -80,6 +80,8 @@ loom {
     runConfigs.all {
         ideConfigGenerated true
         runDir "../../run"
+        programArgs '--username', 'Dev'
+        vmArgs '-Dsafesave.debug=true'
     }
 
     def auditVmArgs = ['-Dsafesave.mixin_audit=true']

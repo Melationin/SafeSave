@@ -25,7 +25,6 @@ public final class PistonManager {
         return SafeSaveSession.of(level.getServer()).pistonOrder.next();
     }
 
-    // 确保新创建的活塞严格排在本服务器从磁盘恢复的顺序值之后。
     public static void observePistonOrder(final ServerLevel level, final long restored) {
         SafeSaveSession.of(level.getServer()).pistonOrder.observe(restored);
     }
@@ -41,14 +40,12 @@ public final class PistonManager {
     public static void onLevelTickStart(final ServerLevel level,
                                         final SafeSaveSession session,
                                         final SafeSaveLevelState levelState) {
-        String dimension = dimensionId(level);
         long generation = session.pistonOrderGeneration.get();
         if (levelState.pistonOrderRebuiltAt < generation) {
             levelState.pistonOrderRebuiltAt = generation;
             // 包含物理卸载前被复活的区块，它们的 NBT 加载钩子不会触发。
             for (var ticker : level.blockEntityTickers) {
                 if (ticker.isRemoved()) continue;
-                // 锂 sleeping 的哨兵 ticker 恒返回 pos == null 且 isRemoved() == false，必须先取出判空。
                 BlockPos pos = ticker.getPos();
                 if (pos == null) continue;
                 if (!level.getBlockState(pos).is(Blocks.MOVING_PISTON)) continue;
@@ -60,10 +57,7 @@ public final class PistonManager {
         }
     }
 
-    /*
-     * 恢复 Level.blockEntityTickers 中移动活塞之间的原始相对刻顺序；
-     * 只按创建顺序升序重写被移动活塞占据的槽位，其余刻循环器保持原索引不变。
-     */
+
     private static void rebuildPistonTickOrder(final ServerLevel level) {
         List<TickingBlockEntity> tickers = level.blockEntityTickers;
         List<Integer> slots = new ArrayList<>();

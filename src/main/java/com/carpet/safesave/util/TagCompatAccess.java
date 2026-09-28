@@ -11,8 +11,8 @@ import net.minecraft.nbt.Tag;
 
 import java.util.Optional;
 
-*/
-//?}
+
+*///?}
 
 // 1.21.5 给 CompoundTag 加了 getIntOr/getStringOr/getListOrEmpty/store/read；更早的版本只有原始
 // 访问器，所以由这里补出来，并用 access widener 把接口注入 CompoundTag。1.21.5+ 既不需要也不加载。

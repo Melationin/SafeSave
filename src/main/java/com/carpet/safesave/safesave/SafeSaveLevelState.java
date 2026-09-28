@@ -12,7 +12,6 @@ public final class SafeSaveLevelState {
 
     public LongSet knownChunks = new LongOpenHashSet();
 
-    // parse 线程写入，主线程在 tick 开头消费；保存路径只读
     public final Map<Long, SafeSaveStore.ChunkSnapshot> pendingChunks = new ConcurrentHashMap<>();
 
     public long nextBlockEventOrder;
@@ -21,8 +20,7 @@ public final class SafeSaveLevelState {
 
     public boolean staleWarned;
 
-    // 原版会在 ServerLevel.tick 内部保存/卸载区块。把这些写入推迟到服务端 tick 末的快照
-    // 落到每个 LevelChunk 之后。
+
     public boolean worldTickRunning;
     public int completedWorldTick = Integer.MIN_VALUE;
     public boolean deferredUnloads;

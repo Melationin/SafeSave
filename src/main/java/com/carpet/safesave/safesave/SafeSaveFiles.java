@@ -42,34 +42,10 @@ public final class SafeSaveFiles {
 
         int loadedFiles = 0;
 
-        /*
-          必须与写侧走同一个函数：DimensionType.getStorageFolder 把原版三维度映射到 <root> /
-          <root>/DIM1 / <root>/DIM-1，只有自定义维度才落在 dimensions/ 下。这里曾只扫 dimensions/，
-          于是原版维度的文件永远读不回来。
-          本方法在 onServerLoaded 调用，ServerLevel 尚未创建，所以只能用维度键还原路径。
-         */
         for (ResourceKey<Level> dimension : VANILLA_DIMENSIONS) {
             Path file = DimensionType.getStorageFolder(dimension, root).resolve("data").resolve(FILE_NAME);
             if (Files.isRegularFile(file) && loadFile(file, session)) {
                 loadedFiles++;
-            }
-        }
-
-        Path dimensionsDir = root.resolve("dimensions");
-        if (Files.isDirectory(dimensionsDir)) {
-            try (Stream<Path> namespaces = Files.list(dimensionsDir)) {
-                for (Path nsDir : namespaces.filter(Files::isDirectory).toList()) {
-                    try (Stream<Path> dimensionDirs = Files.list(nsDir)) {
-                        for (Path dimDir : dimensionDirs.filter(Files::isDirectory).toList()) {
-                            Path file = dimDir.resolve("data").resolve(FILE_NAME);
-                            if (Files.isRegularFile(file) && loadFile(file, session)) {
-                                loadedFiles++;
-                            }
-                        }
-                    }
-                }
-            } catch (IOException | RuntimeException e) {
-                DebugLog.warn("failed to scan {}: {}", dimensionsDir, e.toString());
             }
         }
 
@@ -89,7 +65,7 @@ public final class SafeSaveFiles {
                 DebugLog.warn("{} contains no dimension data - skipped", file.getFileName());
                 return false;
             }
-            // serverTickCount 仅调试用，取第一个加载到的即可
+
             if (session.store.serverTickCount() < 0) {
                 session.store.setServerTickCount(loaded.serverTickCount());
             }
@@ -101,29 +77,19 @@ public final class SafeSaveFiles {
         }
     }
 
-    /*
-     * 挂在 MinecraftServer.saveAllChunks 的 HEAD 而非 RETURN：当 flush=true 时，
-     * 原版会在保存期间运行 processUnloads 并触发区块 NBT 写入，因此这里只写世界级元数据；
-     * 区块数据由 SerializableChunkDataMixin 在随后的每个区块保存中写入。
-     *
-     * 首刻之前（session.freezeArmed 仍为 true）的保存——如
-     * IntegratedServer.initServer / DedicatedServer.initServer 里的
-     * saveEverything(false, true, true)——直接跳过：世界尚未开始 tick，旁置元数据没有
-     * 新内容。模拟等级清单在保存时采集：关闭时原版会先卸载全部区块，
-     * 因此绝不能在最终 flush 时扫描当时已空的区块表。
-     */
+
     public static void saveAll(final MinecraftServer server, final SafeSaveSession session) {
         if (session == null || session.store == null || session.freezeArmed) {
             return;
         }
-        session.store.setServerTickCount(server.getTickCount()); // 仅调试用
+        session.store.setServerTickCount(server.getTickCount());
         int startupChunkTargets = 0;
         int pending = 0;
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
             SafeSaveStore.DimensionData data = session.store.dimension(dimensionId(level));
             data.subTickCount = level.subTickCount;
-            data.gameTime = level.getGameTime(); // 仅调试用
+            data.gameTime = level.getGameTime();
             if (state.tickingSnapshotAvailable) {
                 data.tickingChunks = new Long2ByteOpenHashMap(state.tickingChunksAtTickEnd);
             }

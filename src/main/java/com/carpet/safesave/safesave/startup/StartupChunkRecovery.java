@@ -29,45 +29,32 @@ import static com.carpet.safesave.util.Util.dimensionId;
 
 
 public final class StartupChunkRecovery {
-    // 不注册进 BuiltInRegistries.TICKET_TYPE（该表在 main 入口点之前就已冻结）：本类型无 FLAG_PERSIST，
-    // TicketStorage 从不查注册表，Ticket.CODEC 与 toString() 都用不到未注册类型。
+
     //? if <1.21.5 {
-    /*private static TicketType newTicketType() {
-        return TicketType.create("safesave_startup_load", (first, second) -> 0);
-    }
+    /*private static final TicketType<Unit> SSTicketType =
+        TicketType.create("safesave_startup_load", (first, second) -> 0);
+    *///?} else if < 1.21.9{
+    /*private static final TicketType SSTicketType =
+        new TicketType(0L, false, TicketType.TicketUse.LOADING_AND_SIMULATION);
     *///?} else {
-    // 1.21.9 把 TicketType 从 (timeout, persist, TicketUse) 记录改成了位标志；
-    // FLAG_KEEP_DIMENSION_ACTIVE 在旧模型里没有对应项，LOADING 就是最接近的语义。
-    //? if <1.21.9 {
-    /*private static TicketType newTicketType() {
-        return new TicketType(0L, false, TicketType.TicketUse.LOADING);
-    }
-    *///?} else {
-    private static TicketType newTicketType() {
-        return new TicketType(0, TicketType.FLAG_LOADING | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
-    }
-    //?}
+    private static final TicketType SSTicketType =
+        new TicketType(0, TicketType.FLAG_LOADING|TicketType.FLAG_SIMULATION| TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
     //?}
 
     private StartupChunkRecovery() {}
 
-    // 两次采集间世界时间增量不超过此值时，区块集合的收缩只可能是卸载造成的假象，而非世界真的变小，
-    // 此时对上一次的清单取并集；超过才整体替换，否则清单会跨会话无限累积。
-    // （暂停中 getGameTime() 不推进，所以"暂停保存 -> 关服"的间隔天然是 0。）
     private static final long UNION_WINDOW_TICKS = 10;
 
     public static void arm(MinecraftServer server, SafeSaveSession session) {
-        // 超时为 0 时完全不设屏障：不冻结，也不挂载入票。
+
         if (SafeSaveConfig.of(server).unfreezeTimeout <= 0) {
-            DebugLog.info("startup loading barrier disabled (unfreezeTimeout <= 0)");
+            DebugLog.info("startup loading barrier disabled");
             return;
         }
         int total = 0;
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveStore.DimensionData saved = session.store.dimensionOrNull(dimensionId(level));
             if (saved == null) continue;
-            // 只数 31/32：挂票时同一批条目会被再过滤一次，两处口径必须一致，否则第一个 tick 就会
-            // 判定"全部加载完"而立刻解冻。
             for (Long2ByteMap.Entry entry : saved.tickingChunks.long2ByteEntrySet()) {
                 if (entry.getByteValue() == 31 || entry.getByteValue() == 32) total++;
             }
@@ -76,7 +63,6 @@ public final class StartupChunkRecovery {
             DebugLog.info("no level-31/32 chunks were recorded; startup needs no loading barrier");
             return;
         }
-        session.startupLoadTicketType = newTicketType();
         server.tickRateManager().setFrozen(true);
         session.startupRecoveryWaiting = true;
         session.startupTicketsHeld = true;
@@ -90,15 +76,14 @@ public final class StartupChunkRecovery {
                 long key = entry.getLongKey();
                 state.startupTickets.put(key, ticketLevel);
                 addStartupTicket(level, session, key, ticketLevel);
-            }
+           }
             level.getChunkSource().runDistanceManagerUpdates();
-        }
-        DebugLog.info("startup frozen; loading {} previously ticking chunk(s), forced release after {} server ticks from the first real player",
+       }
+         DebugLog.info("startup frozen; loading {} previously ticking chunk(s), forced release after {} server ticks from the first real player",
                 total, Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout));
     }
 
     public static void update(MinecraftServer server, SafeSaveSession session) {
-        // 下面两段都不成立时无需每 tick 计算 now。
         if (!session.startupRecoveryWaiting && !session.startupTicketsHeld) {
             return;
         }
@@ -109,15 +94,18 @@ public final class StartupChunkRecovery {
                 DebugLog.warn("startup loading barrier restored the server freeze before all targets were ready");
             }
             LoadStatus status = loadStatus(server);
-            if (status.loaded == status.total) {
+          boolean playerJoined = session.firstRealPlayerTick >= 0;
+            boolean chunksReady = status.loaded == status.total;
+            if (playerJoined && chunksReady) {
                 finish(server, session, "after all chunks loaded");
-            } else if (session.firstRealPlayerTick >= 0
+            } else if (playerJoined
                     && now - session.firstRealPlayerTick >= Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout)) {
                 DebugLog.warn("startup chunk wait timed out: {}/{} loaded", status.loaded, status.total);
                 finish(server, session, "after the loading timeout");
             } else if (now - session.startupLastLogTick >= 100) {
                 session.startupLastLogTick = now;
-                DebugLog.info("startup chunk wait: {}/{} loaded", status.loaded, status.total);
+                DebugLog.info("startup chunk wait: {}/{} loaded{}", status.loaded, status.total,
+                        playerJoined ? "" : " (waiting for the first real player)");
             }
         }
         if (session.startupTicketsHeld && !session.startupRecoveryWaiting) {
@@ -130,10 +118,8 @@ public final class StartupChunkRecovery {
     }
 
     public static void onPlayerJoined(ServerPlayer player, SafeSaveSession session) {
-        // 原版只注册 ServerPlayer 一种实现，子类（假人等）不算真人。
         if (player.getClass() != ServerPlayer.class) return;
         MinecraftServer server = player.level().getServer();
-        if (server == null) return;
         if (session.firstRealPlayerTick < 0) session.firstRealPlayerTick = server.getTickCount();
         if (session.startupRecoveryWaiting) {
             player.sendSystemMessage(Component.literal(
@@ -195,7 +181,6 @@ public final class StartupChunkRecovery {
         }
     }
 
-    // 同一区块两次分类不同时取更小的那个：31（实体刻）比 32（仅方块刻）更强。
     private static Long2ByteOpenHashMap union(final Long2ByteOpenHashMap previous,
                                               final Long2ByteOpenHashMap fresh) {
         Long2ByteOpenHashMap merged = new Long2ByteOpenHashMap(previous);
@@ -237,6 +222,7 @@ public final class StartupChunkRecovery {
     }
 
     private static void finish(MinecraftServer server, SafeSaveSession session, String reason) {
+
         session.startupRecoveryWaiting = false;
         session.unfreezeTick = server.getTickCount();
         server.tickRateManager().setFrozen(false);
@@ -267,11 +253,11 @@ public final class StartupChunkRecovery {
                                          long chunkPos, byte ticketLevel) {
         //? if <1.21.5 {
         /*level.getChunkSource().chunkMap.getDistanceManager()
-                .addTicket((TicketType<Unit>) session.startupLoadTicketType,
+                .addTicket((TicketType<Unit>) SSTicketType,
                         new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
         *///?} else {
         level.getChunkSource().ticketStorage.addTicket(chunkPos,
-                new Ticket(session.startupLoadTicketType, ticketLevel));
+                new Ticket(SSTicketType, ticketLevel));
         //?}
     }
 
@@ -279,11 +265,11 @@ public final class StartupChunkRecovery {
                                             long chunkPos, byte ticketLevel) {
         //? if <1.21.5 {
         /*level.getChunkSource().chunkMap.getDistanceManager()
-                .removeTicket((TicketType<Unit>) session.startupLoadTicketType,
+                .removeTicket((TicketType<Unit>) SSTicketType,
                         new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
         *///?} else {
         level.getChunkSource().ticketStorage.removeTicket(chunkPos,
-                new Ticket(session.startupLoadTicketType, ticketLevel));
+                new Ticket(SSTicketType, ticketLevel));
         //?}
     }
 }
