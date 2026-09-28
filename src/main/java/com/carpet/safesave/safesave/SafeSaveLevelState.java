@@ -27,6 +27,7 @@ public final class SafeSaveLevelState {
 
     public boolean worldTickRunning;
     public int completedWorldTick = Integer.MIN_VALUE;
+    public final LongSet activeSnapshotChunksAtTickStart = new LongOpenHashSet();
     public boolean deferredUnloads;
     public boolean deferredFullSave;
     public boolean deferredFullSaveFlush;

@@ -113,7 +113,7 @@ public final class StartupChunkRecovery {
             SafeSaveLevelAccess.of(level).startupBarrierPending = false;
         }
         session.unfreezeTick = server.getTickCount();
-       // server.tickRateManager().setFrozen(false);
+        server.tickRateManager().setFrozen(false);
         DebugLog.info("startup unfroze {} at server tick {}", reason, session.unfreezeTick);
         Component message = Component.literal("[SafeSave] Startup loading wait ended; game ticks have resumed.")
                 .withStyle(ChatFormatting.GREEN);

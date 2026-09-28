@@ -233,18 +233,12 @@ public final class SafeSaveManager {
         save(server, true);
     }
 
-    /*
-      挂在 MinecraftServer.saveAllChunks 的 HEAD（自动保存、save-all、关闭时的最终保存）。
-      区块数据由 SerializableChunkDataMixin 在随后的每个区块保存中写入。
-     */
+
     public static void saveAll(final MinecraftServer server) {
         save(server, !server.isStopped());
     }
 
-    /*
-      模拟等级清单只在保存时采集。stopServer 的 HEAD 处区块尚未卸载，由 saveAtShutdown 采一次；
-      此后的最终 flush 时 isStopped() 已为 true，不再重采，否则会扫描到已被卸载的区块表。
-     */
+
     private static void save(final MinecraftServer server, final boolean captureTicking) {
         if (!shouldRun(server)) {
             return;
