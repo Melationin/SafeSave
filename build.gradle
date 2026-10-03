@@ -80,7 +80,6 @@ loom {
     runConfigs.all {
         ideConfigGenerated true
         runDir "../../run"
-        programArgs '--username', 'Dev'
         vmArgs '-Dsafesave.debug=true'
     }
 
@@ -90,7 +89,6 @@ loom {
         serverMixinAudit {
             server()
             vmArgs auditVmArgs
-            // 与共享的 run/ 隔离：那里带着开发者自己玩的 mod，且锁定在某个版本。
             runDir "../../run-mixinaudit"
             ideConfigGenerated false
         }
