@@ -126,15 +126,25 @@ public final class SafeSaveManager {
             return;
         }
         SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
+        boolean startupOnly = SafeSaveConfig.of(level.getServer()).rebuildStartupOnly;
+        SafeSaveSession session = SafeSaveSession.of(level.getServer());
+        boolean rebuild = !startupOnly || (!levelState.startupRebuildComplete
+                && session != null && !session.freezeArmed && !levelState.startupBarrierPending
+                && level.tickRateManager().runsNormally());
         if (shouldRun(level.getServer())) {
-            PistonManager.onLevelTickStart(level, levelState);
+            PistonManager.onLevelTickStart(level, levelState, rebuild);
         }
-        if (!level.tickRateManager().runsNormally()) {
+        if (!rebuild || !level.tickRateManager().runsNormally()) {
             return;
         }
         if (shouldRun(level.getServer()) || !levelState.pendingChunks.isEmpty()) {
             Set<Long> newChunks = ChunkRebuildCoordinator.rebuildNewChunks(level, levelState);
             EntityOrderManager.rebuildChunks(level, newChunks);
+            levelState.startupRebuildComplete = true;
+            if (startupOnly) {
+
+                levelState.pendingChunks.clear();
+            }
         }
     }
 

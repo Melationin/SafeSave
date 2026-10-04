@@ -1,12 +1,15 @@
 package com.carpet.safesave.safesave;
 
 import com.carpet.safesave.util.OrderSequence;
+import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
+import java.lang.ref.WeakReference;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -21,6 +24,8 @@ public final class SafeSaveLevelState {
     public long nextBlockEventOrder;
 
     public long pistonOrderRebuiltAt = -1L;
+
+    public volatile boolean startupRebuildComplete;
 
     public boolean staleWarned;
 
@@ -46,6 +51,9 @@ public final class SafeSaveLevelState {
 
     public final OrderSequence pistonOrder = new OrderSequence();
     public final AtomicLong pistonOrderGeneration = new AtomicLong();
+
+    public final ConcurrentLinkedQueue<WeakReference<PistonMovingBlockEntity>> pendingPistonTimeRebases =
+            new ConcurrentLinkedQueue<>();
 
     public final AtomicInteger restoredTickCount = new AtomicInteger();
     public final AtomicInteger droppedTickCount = new AtomicInteger();

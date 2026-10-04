@@ -5,6 +5,7 @@ import static com.carpet.safesave.util.SafeSaveNbt.KEY_SAFE_SAVE;
 import static com.carpet.safesave.util.Util.dimensionId;
 
 import com.carpet.safesave.debug.DebugLog;
+import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.util.TagCompat;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
@@ -23,6 +24,10 @@ public final class ChunkNbtBridge {
     public static void onChunkTagRead(final ServerLevel level, final CompoundTag chunkData,
                                       final SafeSaveLevelState levelState) {
         long key = ChunkPosHelper.pack(chunkData.getIntOr("xPos", 0), chunkData.getIntOr("zPos", 0));
+        if (SafeSaveConfig.of(level.getServer()).rebuildStartupOnly && levelState.startupRebuildComplete) {
+            levelState.pendingChunks.remove(key);
+            return;
+        }
         CompoundTag safeSave = TagCompat.compound(chunkData, KEY_SAFE_SAVE).orElse(null);
         if (safeSave == null) {
             levelState.pendingChunks.remove(key);
@@ -34,6 +39,11 @@ public final class ChunkNbtBridge {
             return;
         }
         levelState.pendingChunks.put(key, snapshot);
+        // NBT 解析可以跨过主线程结束启动重建的时刻，入队后再检查一次以避免残留。
+        if (levelState.startupRebuildComplete && SafeSaveConfig.of(level.getServer()).rebuildStartupOnly) {
+            levelState.pendingChunks.remove(key, snapshot);
+            return;
+        }
         if (DebugLog.DEBUG) {
             DebugLog.debug("{} {}: read {} block + {} fluid tick(s), {} block event(s) from chunk NBT",
                     dimensionId(level), ChunkPosHelper.unpack(key),

@@ -72,8 +72,7 @@ public final class StartupChunkRecovery {
                         playerJoined ? "" : " (waiting for the first real player)");
             }
         }
-        int origin = SafeSaveConfig.of(server).timerFromFirstPlayer
-                ? session.firstRealPlayerTick : session.unfreezeTick;
+        int origin = session.firstRealPlayerTick;
         if (origin >= 0 && now - origin >= Math.max(0, SafeSaveConfig.of(server).ticketDuration)) {
             releaseTickets(server);
         }

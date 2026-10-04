@@ -42,9 +42,9 @@ public final class SafeSaveCommand {
     private static int list(final CommandSourceStack source) {
         SafeSaveConfig config = SafeSaveConfig.of(source.getServer());
         show(source, "safeSave", config.safeSave);
+        show(source, "rebuildStartupOnly", config.rebuildStartupOnly);
         show(source, "ticketDuration", config.ticketDuration);
         show(source, "unfreezeTimeout", config.unfreezeTimeout);
-        show(source, "timerFromFirstPlayer", config.timerFromFirstPlayer);
         return 1;
     }
 

@@ -80,6 +80,9 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
                 PistonManager.observePistonOrder(level, this.SS$order);
             }
             this.SS$restorePending = false;
+            if (this.SS$snapshotTime != Long.MIN_VALUE) {
+                PistonManager.queuePistonTimeRebase(level, (PistonMovingBlockEntity) (Object) this);
+            }
             PistonManager.markPistonTickOrderDirty(level);
         }
         if (this.SS$order == Long.MIN_VALUE) {
