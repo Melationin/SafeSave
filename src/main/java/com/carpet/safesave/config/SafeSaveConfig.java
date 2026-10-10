@@ -13,10 +13,11 @@ import java.util.List;
 public final class SafeSaveConfig {
 
     public static final List<String> NAMES = List.of(
-            "safeSave", "rebuildStartupOnly", "ticketDuration", "unfreezeTimeout");
+            "safeSave", "rebuildStartupOnly", "extraChunkDirtyMarking", "ticketDuration", "unfreezeTimeout");
 
     public boolean safeSave = true;
     public boolean rebuildStartupOnly = true;
+    public boolean extraChunkDirtyMarking = false;
     public int ticketDuration = 1200;
     public int unfreezeTimeout = 2400;
 
@@ -32,7 +33,7 @@ public final class SafeSaveConfig {
     // 供命令补全使用；非布尔项返回空表。
     public static List<String> values(final String name) {
         return switch (name) {
-            case "safeSave", "rebuildStartupOnly" -> List.of("true", "false");
+            case "safeSave", "rebuildStartupOnly", "extraChunkDirtyMarking" -> List.of("true", "false");
             default -> List.of();
         };
     }
@@ -63,6 +64,7 @@ public final class SafeSaveConfig {
             Files.write(this.file, List.of(
                     "safeSave " + this.safeSave,
                     "rebuildStartupOnly " + this.rebuildStartupOnly,
+                    "extraChunkDirtyMarking " + this.extraChunkDirtyMarking,
                     "ticketDuration " + this.ticketDuration,
                     "unfreezeTimeout " + this.unfreezeTimeout));
         } catch (IOException e) {
@@ -76,6 +78,7 @@ public final class SafeSaveConfig {
             switch (name) {
                 case "safeSave" -> this.safeSave = booleanValue(value);
                 case "rebuildStartupOnly" -> this.rebuildStartupOnly = booleanValue(value);
+                case "extraChunkDirtyMarking" -> this.extraChunkDirtyMarking = booleanValue(value);
                 case "ticketDuration" -> this.ticketDuration = Integer.parseInt(value);
                 case "unfreezeTimeout" -> this.unfreezeTimeout = Integer.parseInt(value);
                 default -> {

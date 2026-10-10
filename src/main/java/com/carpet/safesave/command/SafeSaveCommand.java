@@ -43,6 +43,7 @@ public final class SafeSaveCommand {
         SafeSaveConfig config = SafeSaveConfig.of(source.getServer());
         show(source, "safeSave", config.safeSave);
         show(source, "rebuildStartupOnly", config.rebuildStartupOnly);
+        show(source, "extraChunkDirtyMarking", config.extraChunkDirtyMarking);
         show(source, "ticketDuration", config.ticketDuration);
         show(source, "unfreezeTimeout", config.unfreezeTimeout);
         return 1;

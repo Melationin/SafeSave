@@ -1,5 +1,6 @@
 package com.carpet.safesave.mixin;
 
+import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveManager;
@@ -36,7 +37,8 @@ public abstract class ServerLevelMixin implements SafeSaveLevelAccess {
         ServerLevel self = (ServerLevel) (Object) this;
         this.SS$safeSaveLevelState.worldTickRunning = true;
         SafeSaveManager.onLevelTickStart(self);
-        if (SafeSaveManager.shouldRun(self.getServer()) && self.tickRateManager().runsNormally()) {
+        if (SafeSaveConfig.of(self.getServer()).extraChunkDirtyMarking
+                && SafeSaveManager.shouldRun(self.getServer()) && self.tickRateManager().runsNormally()) {
             ChunkDirtyManager.captureAtTickStart(self, this.SS$safeSaveLevelState);
         }
     }
@@ -44,7 +46,8 @@ public abstract class ServerLevelMixin implements SafeSaveLevelAccess {
     @Inject(method = "tick", at = @At("RETURN"))
     private void SS$onWorldTickEnd(final BooleanSupplier haveTime, final CallbackInfo ci) {
         ServerLevel self = (ServerLevel) (Object) this;
-        if (SafeSaveManager.shouldRun(self.getServer()) && self.tickRateManager().runsNormally()) {
+        if (SafeSaveConfig.of(self.getServer()).extraChunkDirtyMarking
+                && SafeSaveManager.shouldRun(self.getServer()) && self.tickRateManager().runsNormally()) {
             ChunkDirtyManager.markAtTickEnd(self, this.SS$safeSaveLevelState);
         }
         this.SS$safeSaveLevelState.worldTickRunning = false;
