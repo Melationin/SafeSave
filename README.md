@@ -11,9 +11,8 @@ SafeSave 是一个用于重载世界时更好恢复计划刻、方块事件和�
 | 设置项                          |    默认值 | 用途 |
 |------------------------------|-------:|---|
 | `safeSave`                   | `true` | 启用保存与启动恢复 |
-| `rebuildStartupOnly`         | `true` | 每个维度仅在重启后执行一次恢复重建，覆盖活塞刻顺序、方块/流体计划刻、方块事件和实体刻顺序；关闭后随区块加载按需重建 |
-| `extraChunkDirtyMarking`     | `false` | 为含计划刻或方块事件的区块额外标脏，推动保存 SafeSave 快照；关闭时跳过刻首采集和刻末额外标脏，依赖原版标脏触发区块保存 |
-| `ticketDuration`             | `1200` | 从首位真人玩家加入时起计时，启动加载票保留的服务器刻数 |
+| `rebuildStartupOnly`         | `true` | 每个维度仅在重启后执行一次恢复重建 |
+| `extraChunkDirtyMarking`     | `false` | 为含计划刻或方块事件的区块额外标脏 |
 | `unfreezeTimeout`            | `2400` | 首位真人玩家加入后的强制解冻刻数 |
 
 > [!IMPORTANT]
@@ -21,12 +20,3 @@ SafeSave 是一个用于重载世界时更好恢复计划刻、方块事件和�
 > 目前只测试了与锂和c2me(默认配置)的兼容性.很可能与多线程mod不兼容！
 >
 > 模组还未进行充分测试，在第一次安装前务必备份存档！
-
-`rebuildStartupOnly` 开启时，在启动加载屏障结束后的首个正常世界刻统一重建；屏障关闭时在首个正常世界刻重建。
-之后的区块卸载、重新加载不再触发上述重建，保存与活塞时间戳校准仍然运行。
-活塞时间戳校准仅处理待恢复队列中的活塞，不再为校准复制或扫描整个维度的方块实体 ticker 列表。
-若启动等待超时，只重建当时已就绪的区块，其余区块后续加载时沿用原版恢复，不补做重建。
-可通过 `/safesave setting rebuildStartupOnly false` 恢复按需重建，或在 `safesave.conf` 中设置 `rebuildStartupOnly false`。
-
-`extraChunkDirtyMarking` 默认关闭，不执行额外标脏流程中的方块/流体计划刻容器扫描、方块事件扫描或区块遍历。
-可通过 `/safesave setting extraChunkDirtyMarking true` 开启，或在 `safesave.conf` 中设置 `extraChunkDirtyMarking true`。
