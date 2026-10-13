@@ -1,6 +1,6 @@
 package com.carpet.safesave.mixin.blockentity;
 
-import com.carpet.safesave.safesave.blockentity.PistonManager;
+import com.carpet.safesave.safesave.blockentity.BlockEntityManager;
 import com.carpet.safesave.safesave.blockentity.PistonOrderHolder;
 import com.carpet.safesave.util.NbtView;
 import com.carpet.safesave.util.SafeSaveNbt;
@@ -36,9 +36,6 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
     private long lastTicked;
 
     @Unique
-    private long SS$order = Long.MIN_VALUE;
-
-    @Unique
     private long SS$snapshotTime = Long.MIN_VALUE;
 
     @Unique private boolean SS$restorePending;
@@ -46,7 +43,6 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
     @Unique private float SS$loadedProgressO;
     @Unique private long SS$loadedLastTicked;
     @Unique private long SS$loadedSnapshotTime = Long.MIN_VALUE;
-    @Unique private long SS$loadedOrder = Long.MIN_VALUE;
 
     @Override
     public void SS$rebaseTime(long gameTime) {
@@ -55,11 +51,6 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
                     this.lastTicked, this.SS$snapshotTime, gameTime);
             this.SS$snapshotTime = Long.MIN_VALUE;
         }
-    }
-
-    @Override
-    public long SS$pistonOrder() {
-        return this.SS$order;
     }
 
     @Override
@@ -75,18 +66,10 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
             }
             this.lastTicked = this.SS$loadedLastTicked;
             this.SS$snapshotTime = this.SS$loadedSnapshotTime;
-            if (this.SS$loadedOrder != Long.MIN_VALUE) {
-                this.SS$order = this.SS$loadedOrder;
-                PistonManager.observePistonOrder(level, this.SS$order);
-            }
             this.SS$restorePending = false;
             if (this.SS$snapshotTime != Long.MIN_VALUE) {
-                PistonManager.queuePistonTimeRebase(level, (PistonMovingBlockEntity) (Object) this);
+                BlockEntityManager.queuePistonTimeRebase(level, (PistonMovingBlockEntity) (Object) this);
             }
-            PistonManager.markPistonTickOrderDirty(level);
-        }
-        if (this.SS$order == Long.MIN_VALUE) {
-            this.SS$order = PistonManager.nextPistonOrder(level);
         }
     }
 
@@ -118,7 +101,6 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
         } else if (self.getLevel() != null) {
             tag.putLong("snapshotGameTime", self.getLevel().getGameTime());
         }
-        tag.putLong("order", this.SS$order);
     }
 
     @Inject(method = "loadAdditional", at = @At("TAIL"))
@@ -139,7 +121,6 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
             this.SS$loadedProgressO = tag.getFloatOr("progress_o", this.SS$loadedProgress);
             this.SS$loadedLastTicked = tag.getLongOr("lastTicked", this.lastTicked);
             this.SS$loadedSnapshotTime = tag.getLongOr("snapshotGameTime", Long.MIN_VALUE);
-            this.SS$loadedOrder = tag.getLongOr("order", Long.MIN_VALUE);
             this.SS$restorePending = true;
         }
         var self = (PistonMovingBlockEntity) (Object) this;

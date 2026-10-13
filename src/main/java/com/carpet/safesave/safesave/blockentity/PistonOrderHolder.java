@@ -2,9 +2,7 @@ package com.carpet.safesave.safesave.blockentity;
 
 import net.minecraft.server.level.ServerLevel;
 
-public interface PistonOrderHolder {
-
-    long SS$pistonOrder();
+public interface PistonOrderHolder extends BlockEntityOrderHolder {
 
     void SS$rebaseTime(long gameTime);
 

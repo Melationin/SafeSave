@@ -8,7 +8,7 @@ import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
 import com.carpet.safesave.safesave.chunk.ChunkNbtBridge;
 import com.carpet.safesave.safesave.chunk.ChunkRebuildCoordinator;
-import com.carpet.safesave.safesave.blockentity.PistonManager;
+import com.carpet.safesave.safesave.blockentity.BlockEntityManager;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import com.carpet.safesave.safesave.startup.StartupChunkRecovery;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
@@ -132,7 +132,7 @@ public final class SafeSaveManager {
                 && session != null && !session.freezeArmed && !levelState.startupBarrierPending
                 && level.tickRateManager().runsNormally());
         if (shouldRun(level.getServer())) {
-            PistonManager.onLevelTickStart(level, levelState, rebuild);
+            BlockEntityManager.onLevelTickStart(level, levelState, rebuild);
         }
         if (!rebuild || !level.tickRateManager().runsNormally()) {
             return;

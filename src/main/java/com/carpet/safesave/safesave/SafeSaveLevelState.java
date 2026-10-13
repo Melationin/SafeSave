@@ -23,7 +23,7 @@ public final class SafeSaveLevelState {
 
     public long nextBlockEventOrder;
 
-    public long pistonOrderRebuiltAt = -1L;
+    public long blockEntityOrderRebuiltAt = -1L;
 
     public volatile boolean startupRebuildComplete;
 
@@ -49,8 +49,8 @@ public final class SafeSaveLevelState {
     public boolean startupBarrierPending;
     public boolean startupTicketsHeld;
 
-    public final OrderSequence pistonOrder = new OrderSequence();
-    public final AtomicLong pistonOrderGeneration = new AtomicLong();
+    public final OrderSequence blockEntityOrder = new OrderSequence();
+    public final AtomicLong blockEntityOrderGeneration = new AtomicLong();
 
     public final ConcurrentLinkedQueue<WeakReference<PistonMovingBlockEntity>> pendingPistonTimeRebases =
             new ConcurrentLinkedQueue<>();

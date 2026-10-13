@@ -20,21 +20,21 @@ import java.util.List;
 import static com.carpet.safesave.util.Util.dimensionId;
 
 
-public final class PistonManager {
+public final class BlockEntityManager {
 
-    private PistonManager() {
+    private BlockEntityManager() {
     }
 
-    public static long nextPistonOrder(final ServerLevel level) {
-        return SafeSaveLevelAccess.of(level).pistonOrder.next();
+    public static long nextBlockEntityOrder(final ServerLevel level) {
+        return SafeSaveLevelAccess.of(level).blockEntityOrder.next();
     }
 
-    public static void observePistonOrder(final ServerLevel level, final long restored) {
-        SafeSaveLevelAccess.of(level).pistonOrder.observe(restored);
+    public static void observeBlockEntityOrder(final ServerLevel level, final long restored) {
+        SafeSaveLevelAccess.of(level).blockEntityOrder.observe(restored);
     }
 
-    public static void markPistonTickOrderDirty(final ServerLevel level) {
-        SafeSaveLevelAccess.of(level).pistonOrderGeneration.incrementAndGet();
+    public static void markTickOrderDirty(final ServerLevel level) {
+        SafeSaveLevelAccess.of(level).blockEntityOrderGeneration.incrementAndGet();
     }
 
     public static void queuePistonTimeRebase(final ServerLevel level,
@@ -44,7 +44,7 @@ public final class PistonManager {
 
     /*
      * 在 ServerLevel.tick HEAD 处调用（含冻结期间）。加载过的活塞始终校准时间；
-     * 是否重建顺序由维度级启动恢复入口统一控制。
+     * 活塞和漏斗共用 tick 序号，是否重建顺序由维度级启动恢复入口统一控制。
      */
     public static void onLevelTickStart(final ServerLevel level,
                                         final SafeSaveLevelState levelState,
@@ -53,16 +53,16 @@ public final class PistonManager {
         if (!rebuildOrder) {
             return;
         }
-        long generation = levelState.pistonOrderGeneration.get();
+        long generation = levelState.blockEntityOrderGeneration.get();
         // 屏障结束时即使加载代数未变，也要对完整的启动集合执行一次排序。
-        if (levelState.pistonOrderRebuiltAt >= generation
+        if (levelState.blockEntityOrderRebuiltAt >= generation
                 && !(rebuildOrder && !levelState.startupRebuildComplete)) {
             return;
         }
         List<TickingBlockEntity> tickers = level.blockEntityTickers;
         List<TickingBlockEntity> snapshot = new ArrayList<>(tickers);
         List<Integer> slots = new ArrayList<>();
-        List<OrderedPiston> pistons = new ArrayList<>();
+        List<OrderedBlockEntity> ordered = new ArrayList<>();
         
         for (int i = 0; i < snapshot.size(); i++) {
             TickingBlockEntity ticker = snapshot.get(i);
@@ -75,21 +75,21 @@ public final class PistonManager {
             }
             var chunk = level.getChunkSource().getChunkNow(
                     SectionPos.blockToSectionCoord(pos.getX()), SectionPos.blockToSectionCoord(pos.getZ()));
-            if (chunk == null || !chunk.getBlockState(pos).is(Blocks.MOVING_PISTON)) {
+            if (chunk == null) {
                 continue;
             }
             BlockEntity blockEntity = chunk.getBlockEntities().get(pos);
-            if (blockEntity instanceof PistonOrderHolder holder) {
-                long order = holder.SS$pistonOrder();
+            if (blockEntity instanceof BlockEntityOrderHolder holder) {
+                long order = holder.SS$blockEntityOrder();
                 if (order != Long.MIN_VALUE) {
                     slots.add(i);
-                    pistons.add(new OrderedPiston(ticker, order));
+                    ordered.add(new OrderedBlockEntity(ticker, order));
                 }
             }
         }
-        rebuildPistonTickOrder(level, slots, pistons);
-        // 仅记录本轮开始时的代数；处理期间新加载的活塞留到下一轮。
-        levelState.pistonOrderRebuiltAt = generation;
+        rebuildTickOrder(level, slots, ordered);
+        // 仅记录本轮开始时的代数；处理期间新加载的方块实体留到下一轮。
+        levelState.blockEntityOrderRebuiltAt = generation;
     }
 
     private static void rebasePendingPistons(final ServerLevel level,
@@ -125,22 +125,22 @@ public final class PistonManager {
         }
     }
 
-    private static void rebuildPistonTickOrder(final ServerLevel level,
-                                               final List<Integer> slots,
-                                               final List<OrderedPiston> pistons) {
-        if (pistons.size() < 2) {
+    private static void rebuildTickOrder(final ServerLevel level,
+                                         final List<Integer> slots,
+                                         final List<OrderedBlockEntity> ordered) {
+        if (ordered.size() < 2) {
             return;
         }
 
-        pistons.sort(Comparator.comparingLong(OrderedPiston::order));
+        ordered.sort(Comparator.comparingLong(OrderedBlockEntity::order));
         for (int k = 0; k < slots.size(); k++) {
-            level.blockEntityTickers.set(slots.get(k), pistons.get(k).ticker());
+            level.blockEntityTickers.set(slots.get(k), ordered.get(k).ticker());
         }
         if (DebugLog.DEBUG) {
-            DebugLog.debug("{}: rebuilt tick order of {} moving piston(s) by creation sequence",
-                    dimensionId(level), pistons.size());
+            DebugLog.debug("{}: rebuilt tick order of {} piston/hopper block entities by shared sequence",
+                    dimensionId(level), ordered.size());
         }
     }
 
-    private record OrderedPiston(TickingBlockEntity ticker, long order) {}
+    private record OrderedBlockEntity(TickingBlockEntity ticker, long order) {}
 }
