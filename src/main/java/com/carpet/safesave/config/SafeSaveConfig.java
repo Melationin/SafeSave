@@ -19,7 +19,7 @@ public final class SafeSaveConfig {
     public boolean rebuildStartupOnly = true;
     public boolean extraChunkDirtyMarking = false;
     public boolean expandDirtyChunksOnSave = false;
-    public boolean autoUnfreeze = false;
+    public boolean autoUnfreeze = true;
     public int ticketDuration = 1200;
     public int unfreezeTimeout = 2400;
 
