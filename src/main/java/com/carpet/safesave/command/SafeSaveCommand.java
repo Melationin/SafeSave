@@ -44,6 +44,7 @@ public final class SafeSaveCommand {
         show(source, "safeSave", config.safeSave);
         show(source, "rebuildStartupOnly", config.rebuildStartupOnly);
         show(source, "extraChunkDirtyMarking", config.extraChunkDirtyMarking);
+        show(source, "expandDirtyChunksOnSave", config.expandDirtyChunksOnSave);
         show(source, "autoUnfreeze", config.autoUnfreeze);
         show(source, "ticketDuration", config.ticketDuration);
         show(source, "unfreezeTimeout", config.unfreezeTimeout);

@@ -1,7 +1,9 @@
 package com.carpet.safesave.mixin.chunk;
 
+import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveManager;
+import com.carpet.safesave.safesave.chunk.ChunkDirtyManager;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
@@ -27,6 +29,10 @@ public abstract class ChunkMapMixin {
             state.deferredFullSaveFlush |= flush;
             ci.cancel();
             return;
+        }
+        if (SafeSaveManager.shouldRun(this.level.getServer())
+                && SafeSaveConfig.of(this.level.getServer()).expandDirtyChunksOnSave) {
+            ChunkDirtyManager.expandDirtyChunks(this.level);
         }
     }
 
