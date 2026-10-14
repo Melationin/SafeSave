@@ -37,10 +37,11 @@ public final class SafeSaveManager {
     }
 
     public static void onLevelsCreated(final MinecraftServer server) {
+        SafeSaveSession session = SafeSaveSession.of(server);
+        session.serverGameTime = server.overworld().getGameTime();
         if (!shouldRun(server)) {
             return;
         }
-        SafeSaveSession session = SafeSaveSession.of(server);
         int loaded = 0;
         for (ServerLevel level : server.getAllLevels()) {
             if (SafeSaveFiles.loadForLevel(level, session)) {

@@ -4,10 +4,12 @@ import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveManager;
+import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.chunk.ChunkDirtyManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.BlockEventData;
+import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -35,6 +37,9 @@ public abstract class ServerLevelMixin implements SafeSaveLevelAccess {
     @Inject(method = "tick", at = @At("HEAD"))
     private void SS$onWorldTickHead(final BooleanSupplier haveTime, final CallbackInfo ci) {
         ServerLevel self = (ServerLevel) (Object) this;
+        if (self.dimension() == Level.OVERWORLD) {
+            SafeSaveSession.of(self.getServer()).serverGameTime = self.getGameTime();
+        }
         this.SS$safeSaveLevelState.worldTickRunning = true;
         SafeSaveManager.onLevelTickStart(self);
         if (SafeSaveConfig.of(self.getServer()).extraChunkDirtyMarking

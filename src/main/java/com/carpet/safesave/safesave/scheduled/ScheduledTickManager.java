@@ -5,6 +5,7 @@ import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
+import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
@@ -52,7 +53,7 @@ public final class ScheduledTickManager {
                                          final Object fluidContainer,
                                          final SafeSaveLevelState levelState) {
         warnIfStale(level, levelState);
-        long currentGameTime = level.getGameTime();
+        long currentGameTime = SafeSaveSession.of(level.getServer()).serverGameTime;
         int keptBlock = applyTicks((TickContainerAccess<Block>) blockContainer, snapshot.blockTicks(),
                 BuiltInRegistries.BLOCK, ((SafeTickContainer) blockContainer).SS$snapshotQueue(),
                 snapshot.snapshotGameTime(), currentGameTime, levelState);
@@ -76,7 +77,7 @@ public final class ScheduledTickManager {
         if (data.gameTime == Long.MIN_VALUE || levelState.staleWarned) {
             return;
         }
-        long live = level.getGameTime();
+        long live = SafeSaveSession.of(level.getServer()).serverGameTime;
         if (data.gameTime != live) {
             levelState.staleWarned = true;
             DebugLog.warn("{}: side file was written at gameTime={} but the world resumed at gameTime={} "

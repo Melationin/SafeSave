@@ -4,6 +4,7 @@ package com.carpet.safesave.safesave.blockentity;
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
+import com.carpet.safesave.safesave.SafeSaveSession;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ServerLevel;
@@ -116,7 +117,7 @@ public final class BlockEntityManager {
                 continue;
             }
             try {
-                ((PistonOrderHolder) piston).SS$rebaseTime(level.getGameTime());
+                ((PistonOrderHolder) piston).SS$rebaseTime(SafeSaveSession.of(level.getServer()).serverGameTime);
             } catch (RuntimeException | Error e) {
                 // 校准失败时保留入口，不能提前消费待恢复状态。
                 pending.add(reference);
