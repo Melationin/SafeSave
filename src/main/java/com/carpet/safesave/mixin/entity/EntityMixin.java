@@ -6,7 +6,6 @@ import com.carpet.safesave.safesave.entity.EntityOrderHolder;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.Pose;
 //? if <1.21.6 {
 /*import net.minecraft.nbt.CompoundTag;
 *///?} else {
@@ -24,7 +23,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /*import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 *///?}
 
-import java.util.Locale;
 import java.util.Optional;
 
 
@@ -98,13 +96,7 @@ public abstract class EntityMixin implements EntityOrderHolder
     public abstract Vec3 getDeltaMovement();
 
     @Shadow
-    public abstract Pose getPose();
-
-    @Shadow
     public abstract void setDeltaMovement(Vec3 deltaMovement);
-
-    @Shadow
-    public abstract void setPose(Pose pose);
 
 
 
@@ -147,12 +139,6 @@ public abstract class EntityMixin implements EntityOrderHolder
         NbtView.Writer finalSafe = safe;
         this.mainSupportingBlockPos.ifPresent(pos -> finalSafe.store("main_supporting_block_pos", BlockPos.CODEC, pos));
         safe.putBoolean("on_ground_no_blocks", this.onGroundNoBlocks);
-        // Pose.CODEC 写出的是小写序列化名，旧版分支手写同样的形式以保持存档格式一致。
-        //? if <1.21.9 {
-        /*safe.putString("pose", this.getPose().name().toLowerCase(Locale.ROOT));
-        *///?} else {
-        safe.store("pose", Pose.CODEC, this.getPose());
-        //?}
         safe.putLong("entity_order", this.SS$entityOrder);
 
     }
@@ -195,18 +181,6 @@ public abstract class EntityMixin implements EntityOrderHolder
         this.wasEyeInWater = safe.getBooleanOr("was_eye_in_water", this.wasEyeInWater);
         safe.read("main_supporting_block_pos", BlockPos.CODEC).ifPresent(pos -> this.mainSupportingBlockPos = Optional.of(pos));
         this.onGroundNoBlocks = safe.getBooleanOr("on_ground_no_blocks", this.onGroundNoBlocks);
-        //? if <1.21.9 {
-        /*safe.getString("pose").ifPresent(name -> {
-            for (Pose pose : Pose.values()) {
-                if (pose.name().equalsIgnoreCase(name)) {
-                    this.setPose(pose);
-                    return;
-                }
-            }
-        });
-        *///?} else {
-        safe.read("pose", Pose.CODEC).ifPresent(this::setPose);
-        //?}
         long order = safe.getLongOr("entity_order", this.SS$entityOrder);
         if (order != Long.MIN_VALUE) {
             this.SS$entityOrder = order;
