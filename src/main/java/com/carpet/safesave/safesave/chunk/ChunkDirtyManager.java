@@ -43,13 +43,19 @@ public final class ChunkDirtyManager {
                 dirty.add(ChunkPosHelper.pack(chunk.getPos()));
             }
         }
+        var distanceManager = level.getChunkSource().chunkMap.getDistanceManager();
         for (long key : dirty) {
             int x = ChunkPos.getX(key);
             int z = ChunkPos.getZ(key);
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
                     if (dx == 0 && dz == 0) continue;
-                    LevelChunk neighbor = level.getChunkSource().getChunkNow(x + dx, z + dz);
+                    int neighborX = x + dx;
+                    int neighborZ = z + dz;
+                    if (!distanceManager.inEntityTickingRange(ChunkPosHelper.pack(neighborX, neighborZ))) {
+                        continue;
+                    }
+                    LevelChunk neighbor = level.getChunkSource().getChunkNow(neighborX, neighborZ);
                     if (neighbor != null) markDirty(neighbor);
                 }
             }

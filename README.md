@@ -13,7 +13,7 @@ SafeSave 是一个用于重载世界时更好恢复计划刻、方块事件和�
 | `safeSave`                   |  `true` | 启用保存与启动恢复 |
 | `rebuildStartupOnly`         |  `true` | 每个维度仅在重启后执行一次恢复重建 |
 | `extraChunkDirtyMarking`     | `false` | 为含计划刻或方块事件的区块额外标脏 |
-| `expandDirtyChunksOnSave`   | `false` | 世界保存时，将当前脏区块周围一圈已加载区块也标脏 |
+| `expandDirtyChunksOnSave`   |  `true` | 世界保存时，将当前脏区块周围一圈正在实体刻的区块也标脏 |
 | `autoUnfreeze`               |  `true` | 启动加载等待结束后自动解冻；关闭后使用 `/tick unfreeze` 手动恢复 |
 | `ticketDuration`             |  `1200` | 启动加载票保留的服务器刻数；关闭自动解冻时从手动解冻开始计时 |
 | `unfreezeTimeout`            |  `2400` | 首位真人玩家加入后的启动加载等待上限；设为 0 时不启用启动屏障 |
