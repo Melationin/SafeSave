@@ -1,5 +1,7 @@
 # SafeSave
 
+[English](#english) | 中文
+
 SafeSave 是一个用于重载世界时更好恢复计划刻、方块事件和实体的状态和顺序。已达到更安全的保存和备份的fabric mod
 
 同时，为了解决载入世界时不同区块的加载不一致的问题，模组会在重载世界后给保存时加载的区块添加加载票，并冻结世界直到所有区块被加载
@@ -23,3 +25,33 @@ SafeSave 是一个用于重载世界时更好恢复计划刻、方块事件和�
 > 目前只测试了与锂和c2me(默认配置)的兼容性.很可能与多线程mod不兼容！
 >
 > 模组还未进行充分测试，在第一次安装前务必备份存档！
+
+---
+
+## English
+
+[中文](#safesave) | English
+
+SafeSave is a Fabric mod that restores the state and ordering of scheduled ticks, block events, and entities more faithfully when a world is reloaded, making saving and restoring safer.
+
+It also addresses inconsistent chunk loading when a world loads: after a world reload, the mod adds loading tickets for the chunks that were loaded at save time, and freezes the world until all of those chunks have loaded.
+
+The mod can only greatly reduce — not eliminate — tick disorder and block event loss caused by restarts; it may not be fully effective for ordinary chunk unloads.
+
+The mod provides the following settings, which can be changed in-game or in `safesave.conf`:
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `safeSave` | `true` | Enable saving and startup restoration |
+| `rebuildStartupOnly` | `true` | Run the restore rebuild only once per dimension after a restart |
+| `extraChunkDirtyMarking` | `false` | Additionally mark chunks containing scheduled ticks or block events as dirty |
+| `expandDirtyChunksOnSave` | `true` | On world save, also mark the ring of surrounding chunks that are entity-ticking as dirty |
+| `autoUnfreeze` | `true` | Unfreeze automatically once the startup loading wait ends; when disabled, use `/tick unfreeze` to resume manually |
+| `ticketDuration` | `1200` | Number of server ticks the startup loading tickets are kept; when auto-unfreeze is off, the timer starts from the manual unfreeze |
+| `unfreezeTimeout` | `2400` | Upper limit on the startup loading wait after the first real player joins; set to 0 to disable the startup barrier |
+
+> [!IMPORTANT]
+> Note! The mod adds new chunk NBT fields, which may affect vanilla-oriented optimization mods.
+> So far, compatibility has only been tested with Lithium and C2ME (default configuration). It is very likely incompatible with multithreading mods!
+>
+> The mod has not been thoroughly tested yet. Be sure to back up your world before installing it for the first time!
