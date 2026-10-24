@@ -6,18 +6,18 @@ import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveStore;
 import com.carpet.safesave.safesave.blockevent.BlockEventManager;
 import com.carpet.safesave.safesave.blockevent.SafeBlockEvent;
-import com.carpet.safesave.safesave.scheduled.SafeTickContainer;
+import com.carpet.safesave.safesave.blockentity.BlockEntityManager;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
 import com.carpet.safesave.safesave.scheduled.TickContainers;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import it.unimi.dsi.fastutil.longs.LongIterator;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import static com.carpet.safesave.util.Util.dimensionId;
 
@@ -26,50 +26,40 @@ public final class ChunkRebuildCoordinator {
     private ChunkRebuildCoordinator() {
     }
 
-    public static Set<Long> rebuildNewChunks(final ServerLevel level,
+    // 调用方统一检查冻结状态；此处仅处理已接管且容器就绪的区块。
+    public static LongSet rebuildNewChunks(final ServerLevel level,
                                              final SafeSaveLevelState levelState) {
-        if (!level.tickRateManager().runsNormally()) {
-            return Set.of();
-        }
         String dimension = dimensionId(level);
-        LongSet ready = TickContainers.collectReadyChunks(level);
-
-        LongSet previous = levelState.knownChunks;
-        LongOpenHashSet newKeys = new LongOpenHashSet();
-        for (long key : ready) {
-            if (!previous.contains(key)) {
-                newKeys.add(key);
-            }
-        }
-
-        if (levelState.pendingChunks.isEmpty()) {
-            levelState.knownChunks = ready;
-            return newKeys;
-        }
-
-        LongOpenHashSet candidates = new LongOpenHashSet();
-        for (long key : ready) {
-            if (levelState.pendingChunks.containsKey(key)) {
-                candidates.add(key);
-            }
-        }
-
         Long2ObjectMap<?> blockContainers = TickContainers.blockContainers(level);
         Long2ObjectMap<?> fluidContainers = TickContainers.fluidContainers(level);
+        LongOpenHashSet candidates = new LongOpenHashSet();
+        synchronized (levelState.pendingChunks) {
+            for (LongIterator iterator = levelState.pendingChunks.keySet().iterator(); iterator.hasNext();) {
+                long key = iterator.nextLong();
+                if (level.getChunkSource().getChunkNow(ChunkPos.getX(key), ChunkPos.getZ(key)) != null
+                        && TickContainers.isReady(blockContainers.get(key), fluidContainers.get(key))) {
+                    candidates.add(key);
+                }
+            }
+        }
+        if (candidates.isEmpty()) {
+            return candidates;
+        }
         List<SafeBlockEvent> blockEventsToRestore = new ArrayList<>();
         int rebuilt = 0;
-        for (long key : candidates) {
+        for (LongIterator iterator = candidates.iterator(); iterator.hasNext();) {
+            long key = iterator.nextLong();
             Object block = blockContainers.get(key);
             Object fluid = fluidContainers.get(key);
-            if (!(block instanceof SafeTickContainer) || !(fluid instanceof SafeTickContainer)) {
-                continue;
-            }
             SafeSaveStore.ChunkSnapshot snapshot = levelState.pendingChunks.get(key);
             if (snapshot == null) {
                 continue;
             }
             try {
-                ScheduledTickManager.restoreChunkTicks(level, key, snapshot, block, fluid, levelState);
+                // 没有自定义快照的接管区块保留原版计划刻。
+                if (!snapshot.isEmpty()) {
+                    ScheduledTickManager.restoreChunkTicks(level, key, snapshot, block, fluid, levelState);
+                }
             } catch (Exception e) {
                 levelState.pendingChunks.remove(key);
                 DebugLog.warn("{}: failed to restore scheduled ticks for chunk {}, dropping its snapshot: {}",
@@ -80,16 +70,17 @@ public final class ChunkRebuildCoordinator {
             rebuilt++;
             blockEventsToRestore.addAll(snapshot.blockEvents());
         }
+        BlockEntityManager.restoreTickers(level, candidates);
         if (!blockEventsToRestore.isEmpty()) {
             BlockEventManager.restoreChunkEvents(level, blockEventsToRestore, levelState);
         }
 
-        levelState.knownChunks = ready;
-        if (!candidates.isEmpty() && DebugLog.DEBUG) {
-            DebugLog.debug("{}: rebuild tick start - {} chunk(s) to rebuild ({} newly loaded); {} rebuilt, {} tick(s) restored so far, {} dropped",
-                    dimension, candidates.size(), newKeys.size(), rebuilt,
+        if (DebugLog.DEBUG) {
+            DebugLog.debug("{}: rebuild tick start - {} chunk(s) to rebuild; {} rebuilt, {} tick(s) restored so far, {} dropped",
+                    dimension, candidates.size(), rebuilt,
                     levelState.restoredTickCount.get(), levelState.droppedTickCount.get());
         }
-        return newKeys;
+        // 实体排序也仅处理本批接管的区块，不波及其他已加载区块。
+        return candidates;
     }
 }

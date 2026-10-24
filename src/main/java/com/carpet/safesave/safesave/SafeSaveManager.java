@@ -8,10 +8,10 @@ import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.chunk.SerializableChunkDataAccess;
 import com.carpet.safesave.safesave.chunk.ChunkNbtBridge;
 import com.carpet.safesave.safesave.chunk.ChunkRebuildCoordinator;
-import com.carpet.safesave.safesave.blockentity.BlockEntityManager;
 import com.carpet.safesave.safesave.entity.EntityOrderManager;
 import com.carpet.safesave.safesave.startup.StartupChunkRecovery;
 import com.carpet.safesave.safesave.scheduled.ScheduledTickManager;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -19,7 +19,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
 
-import java.util.Set;
+import java.util.Locale;
 import java.util.function.BooleanSupplier;
 
 public final class SafeSaveManager {
@@ -68,6 +68,10 @@ public final class SafeSaveManager {
             StartupChunkRecovery.arm(server);
         }
         StartupChunkRecovery.update(server, session);
+        // 没有启动屏障时，以首次正常运行作为启动接管窗口的结束。
+        if (!server.tickRateManager().isFrozen()) {
+            session.startupUnfrozen = true;
+        }
     }
 
     public static void onServerTickChildrenStart(final MinecraftServer server) {
@@ -123,29 +127,26 @@ public final class SafeSaveManager {
 
     public static void onLevelTickStart(final ServerLevel level) {
         StartupChunkRecovery.enforceFreeze(level);
-        if (!shouldRun(level.getServer()) && SafeSaveLevelAccess.of(level).pendingChunks.isEmpty()) {
-            return;
-        }
         SafeSaveLevelState levelState = SafeSaveLevelAccess.of(level);
-        boolean startupOnly = SafeSaveConfig.of(level.getServer()).rebuildStartupOnly;
-        SafeSaveSession session = SafeSaveSession.of(level.getServer());
-        boolean rebuild = !startupOnly || (!levelState.startupRebuildComplete
-                && session != null && !session.freezeArmed && !levelState.startupBarrierPending
-                && level.tickRateManager().runsNormally());
-        if (shouldRun(level.getServer())) {
-            BlockEntityManager.onLevelTickStart(level, levelState, rebuild);
-        }
-        if (!rebuild || !level.tickRateManager().runsNormally()) {
+        if (levelState.pendingChunks.isEmpty()) {
             return;
         }
-        if (shouldRun(level.getServer()) || !levelState.pendingChunks.isEmpty()) {
-            Set<Long> newChunks = ChunkRebuildCoordinator.rebuildNewChunks(level, levelState);
-            EntityOrderManager.rebuildChunks(level, newChunks);
-            levelState.startupRebuildComplete = true;
-            if (startupOnly) {
-
-                levelState.pendingChunks.clear();
-            }
+        SafeSaveSession session = SafeSaveSession.of(level.getServer());
+        if (session == null || session.freezeArmed || levelState.startupBarrierPending
+                || !level.tickRateManager().runsNormally()) {
+            return;
+        }
+        int pending = DebugLog.DEBUG ? levelState.pendingChunks.size() : 0;
+        long startedAt = DebugLog.DEBUG ? System.nanoTime() : 0L;
+        LongSet chunks = ChunkRebuildCoordinator.rebuildNewChunks(level, levelState);
+        EntityOrderManager.rebuildChunks(level, chunks);
+        if (DebugLog.DEBUG && !chunks.isEmpty()) {
+            double elapsedMs = (System.nanoTime() - startedAt) / 1_000_000.0;
+            String timing = String.format(Locale.ROOT,
+                    "%s: restore took %.3f ms (pending chunks=%d, server tick=%d)",
+                    com.carpet.safesave.util.Util.dimensionId(level), elapsedMs,
+                    pending, level.getServer().getTickCount());
+            DebugLog.info("{}", timing);
         }
     }
 

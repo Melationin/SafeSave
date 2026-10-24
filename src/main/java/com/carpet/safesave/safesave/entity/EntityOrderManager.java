@@ -4,12 +4,12 @@ package com.carpet.safesave.safesave.entity;
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.util.ChunkPosHelper;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
+import it.unimi.dsi.fastutil.longs.LongCollection;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.entity.EntityTickList;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 
@@ -38,7 +38,7 @@ public final class EntityOrderManager {
         }
     }
 
-    public static void rebuildChunks(final ServerLevel level, final Collection<Long> newChunks) {
+    public static void rebuildChunks(final ServerLevel level, final LongCollection newChunks) {
         if (newChunks == null || newChunks.isEmpty()) {
             return;
         }

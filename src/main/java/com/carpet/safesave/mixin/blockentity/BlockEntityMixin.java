@@ -27,10 +27,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class BlockEntityMixin implements BlockEntityOrderHolder {
 
     @Unique private long SS$order = Long.MIN_VALUE;
+    @Unique private boolean SS$loadedOrder;
 
     @Override
     public long SS$blockEntityOrder() {
         return this.SS$order;
+    }
+
+    @Override
+    public boolean SS$hasLoadedBlockEntityOrder() {
+        return this.SS$loadedOrder;
     }
 
     @Unique
@@ -46,7 +52,6 @@ public abstract class BlockEntityMixin implements BlockEntityOrderHolder {
         } else {
             BlockEntityManager.observeBlockEntityOrder(level, this.SS$order);
         }
-        BlockEntityManager.markTickOrderDirty(level);
     }
 
     @Inject(method = "setLevel", at = @At("TAIL"))
@@ -94,6 +99,7 @@ public abstract class BlockEntityMixin implements BlockEntityOrderHolder {
         if (!this.SS$hasTickOrder()) return;
         NbtView.Reader tag = SafeSaveNbt.childOrNull(NbtView.reader(input));
         this.SS$order = tag == null ? Long.MIN_VALUE : tag.getLongOr("order", Long.MIN_VALUE);
+        this.SS$loadedOrder = this.SS$order != Long.MIN_VALUE;
         if (((BlockEntity) (Object) this).getLevel() instanceof ServerLevel level) {
             this.SS$attachOrder(level);
         }

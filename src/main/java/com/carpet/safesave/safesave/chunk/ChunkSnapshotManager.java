@@ -17,7 +17,7 @@ public final class ChunkSnapshotManager {
                                                       SafeSaveLevelState state) {
         long key = ChunkPosHelper.pack(chunk.getPos());
         SafeSaveStore.ChunkSnapshot pending = state.pendingChunks.get(key);
-        if (pending != null) return pending;
+        if (pending != null && !pending.isEmpty()) return pending;
         if (!SafeSaveManager.canCaptureSnapshot(level)) return null;
         if (!(chunk.getBlockTicks() instanceof SafeTickContainer)
                 || !(chunk.getFluidTicks() instanceof SafeTickContainer)) return null;

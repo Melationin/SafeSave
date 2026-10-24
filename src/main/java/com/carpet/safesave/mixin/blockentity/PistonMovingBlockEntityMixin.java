@@ -1,6 +1,5 @@
 package com.carpet.safesave.mixin.blockentity;
 
-import com.carpet.safesave.safesave.blockentity.BlockEntityManager;
 import com.carpet.safesave.safesave.blockentity.PistonOrderHolder;
 import com.carpet.safesave.util.NbtView;
 import com.carpet.safesave.util.SafeSaveNbt;
@@ -67,9 +66,6 @@ public abstract class PistonMovingBlockEntityMixin implements PistonOrderHolder 
             this.lastTicked = this.SS$loadedLastTicked;
             this.SS$snapshotTime = this.SS$loadedSnapshotTime;
             this.SS$restorePending = false;
-            if (this.SS$snapshotTime != Long.MIN_VALUE) {
-                BlockEntityManager.queuePistonTimeRebase(level, (PistonMovingBlockEntity) (Object) this);
-            }
         }
     }
 

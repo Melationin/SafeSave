@@ -6,6 +6,8 @@ import com.carpet.safesave.safesave.scheduled.SafeTick;
 import com.carpet.safesave.util.TagCompat;
 import it.unimi.dsi.fastutil.longs.Long2ByteMap;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongList;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -35,6 +37,9 @@ public final class SafeSaveStore {
     private static final String KEY_CHUNK_BLOCK_EVENTS = "block_events";
     private static final String KEY_SNAPSHOT_GAME_TIME = "snapshot_game_time";//保存快照时的 gameTime；空值为Long.MIN_VALUE
 
+
+    public static final ChunkSnapshot EMPTY_CHUNK_SNAPSHOT =
+            new ChunkSnapshot(List.of(), List.of(), List.of(), Long.MIN_VALUE);
 
     public record ChunkSnapshot(List<SafeTick> blockTicks,
                                 List<SafeTick> fluidTicks,
@@ -111,14 +116,16 @@ public final class SafeSaveStore {
             // 仅调试用
             levelTag.putLong(KEY_DEBUG_GAME_TIME, data.gameTime);
         }
-        List<Long> entityChunks = new ArrayList<>();
-        List<Long> blockChunks = new ArrayList<>();
+        LongList entityChunks = new LongArrayList();
+        LongList blockChunks = new LongArrayList();
         for (Long2ByteMap.Entry entry : data.tickingChunks.long2ByteEntrySet()) {
             if (entry.getByteValue() == 31) entityChunks.add(entry.getLongKey());
             else if (entry.getByteValue() == 32) blockChunks.add(entry.getLongKey());
         }
-        levelTag.put(KEY_ENTITY_TICKING_CHUNKS, new LongArrayTag(entityChunks.stream().mapToLong(Long::longValue).sorted().toArray()));
-        levelTag.put(KEY_BLOCK_TICKING_CHUNKS, new LongArrayTag(blockChunks.stream().mapToLong(Long::longValue).sorted().toArray()));
+        entityChunks.sort(null);
+        blockChunks.sort(null);
+        levelTag.put(KEY_ENTITY_TICKING_CHUNKS, new LongArrayTag(entityChunks.toLongArray()));
+        levelTag.put(KEY_BLOCK_TICKING_CHUNKS, new LongArrayTag(blockChunks.toLongArray()));
 
         ListTag levels = new ListTag();
         levels.add(levelTag);

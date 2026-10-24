@@ -7,6 +7,7 @@
     "MinecraftServerMixin",
     "PlayerListMixin",
     "ServerLevelMixin",
+    "ServerTickRateManagerMixin",
     "blockentity.BlockEntityMixin",
     "blockentity.PistonMovingBlockEntityMixin",
     "blockevent.BlockEventDataMixin",
@@ -19,7 +20,8 @@
     "util.TagValueOutputMixin",
     "util.CompoundTagCompatMixin",
     "chunk.SerializableChunkDataMixin",
-    "chunk.ChunkMapMixin"
+    "chunk.ChunkMapMixin",
+    "chunk.LevelChunkMixin"
   ],
   "injectors": {
     "defaultRequire": 1

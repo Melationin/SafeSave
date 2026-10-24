@@ -13,7 +13,7 @@ SafeSave 是一个用于重载世界时更好恢复计划刻、方块事件和�
 | 设置项                          |     默认值 | 用途 |
 |------------------------------|--------:|---|
 | `safeSave`                   |  `true` | 启用保存与启动恢复 |
-| `rebuildStartupOnly`         |  `true` | 每个维度仅在重启后执行一次恢复重建 |
+| `rebuildStartupOnly`         |  `true` | 仅接管首次自动或手动解冻前新加载的区块，以及维度 chunksToRestore 集合中的新加载区块；关闭后持续接管所有新加载区块 |
 | `extraChunkDirtyMarking`     | `false` | 为含计划刻或方块事件的区块额外标脏 |
 | `expandDirtyChunksOnSave`   |  `true` | 世界保存时，将当前脏区块周围一圈正在实体刻的区块也标脏 |
 | `autoUnfreeze`               |  `true` | 启动加载等待结束后自动解冻；关闭后使用 `/tick unfreeze` 手动恢复 |
@@ -43,7 +43,7 @@ The mod provides the following settings, which can be changed in-game or in `saf
 | Setting | Default | Purpose |
 |---|---|---|
 | `safeSave` | `true` | Enable saving and startup restoration |
-| `rebuildStartupOnly` | `true` | Run the restore rebuild only once per dimension after a restart |
+| `rebuildStartupOnly` | `true` | Take over newly loaded chunks before the first automatic or manual unfreeze, plus newly loaded chunks in the dimension's chunksToRestore set; when disabled, take over all newly loaded chunks |
 | `extraChunkDirtyMarking` | `false` | Additionally mark chunks containing scheduled ticks or block events as dirty |
 | `expandDirtyChunksOnSave` | `true` | On world save, also mark the ring of surrounding chunks that are entity-ticking as dirty |
 | `autoUnfreeze` | `true` | Unfreeze automatically once the startup loading wait ends; when disabled, use `/tick unfreeze` to resume manually |

@@ -1,31 +1,30 @@
 package com.carpet.safesave.safesave;
 
 import com.carpet.safesave.util.OrderSequence;
-import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMaps;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
-import java.lang.ref.WeakReference;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 public final class SafeSaveLevelState {
 
     public SafeSaveStore.DimensionData savedDimension = new SafeSaveStore.DimensionData();
 
-    public LongSet knownChunks = new LongOpenHashSet();
+    // NBT 读取只暂存数据，注册区块时才决定是否接管。
+    public final Long2ObjectMap<SafeSaveStore.ChunkSnapshot> loadedChunkSnapshots =
+            Long2ObjectMaps.synchronize(new Long2ObjectOpenHashMap<>());
 
-    public final Map<Long, SafeSaveStore.ChunkSnapshot> pendingChunks = new ConcurrentHashMap<>();
+    public final Long2ObjectMap<SafeSaveStore.ChunkSnapshot> pendingChunks =
+            Long2ObjectMaps.synchronize(new Long2ObjectOpenHashMap<>());
+
+    // 主线程维护：首次解冻后仍需接管的新加载区块，按维度保存区块坐标。
+    public final LongSet chunksToRestore = new LongOpenHashSet();
 
     public long nextBlockEventOrder;
-
-    public long blockEntityOrderRebuiltAt = -1L;
-
-    public volatile boolean startupRebuildComplete;
 
     public boolean staleWarned;
 
@@ -50,10 +49,6 @@ public final class SafeSaveLevelState {
     public boolean startupTicketsHeld;
 
     public final OrderSequence blockEntityOrder = new OrderSequence();
-    public final AtomicLong blockEntityOrderGeneration = new AtomicLong();
-
-    public final ConcurrentLinkedQueue<WeakReference<PistonMovingBlockEntity>> pendingPistonTimeRebases =
-            new ConcurrentLinkedQueue<>();
 
     public final AtomicInteger restoredTickCount = new AtomicInteger();
     public final AtomicInteger droppedTickCount = new AtomicInteger();
