@@ -44,3 +44,4 @@ tools/
 /automation/
 /tests/
 /src/test/
+/.github/workflows/server-tests.yml
