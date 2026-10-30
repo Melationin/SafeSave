@@ -5,4 +5,6 @@ public interface EntityOrderHolder {
     long SS$entityOrder();
 
     void SS$assignEntityOrder(long order);
+
+    boolean SS$markTickListEntry();
 }

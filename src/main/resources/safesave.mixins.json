@@ -15,6 +15,7 @@
     "entity.EntityMixin",
     "entity.EntityTickListMixin",
     "entity.FallingBlockEntityMixin",
+    "entity.MinecartFurnaceMixin",
     "entity.PrimedTntMixin",
     "scheduled.LevelChunkTicksMixin",
     "util.TagValueOutputMixin",

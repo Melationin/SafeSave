@@ -10,15 +10,16 @@ SafeSave 是一个用于重载世界时更好恢复计划刻、方块事件和�
 
 模组提供以下设置项，可以在游戏中或者`safesave.conf`中进行修改
 
-| 设置项                          |     默认值 | 用途 |
-|------------------------------|--------:|---|
-| `safeSave`                   |  `true` | 启用保存与启动恢复 |
+| 设置项                          |     默认值 | 用途                                                                |
+|------------------------------|--------:|-------------------------------------------------------------------|
+| `safeSave`                   |  `true` | 启用保存与启动恢复                                                         |
 | `rebuildStartupOnly`         |  `true` | 仅接管首次自动或手动解冻前新加载的区块，以及维度 chunksToRestore 集合中的新加载区块；关闭后持续接管所有新加载区块 |
-| `extraChunkDirtyMarking`     | `false` | 为含计划刻或方块事件的区块额外标脏 |
-| `expandDirtyChunksOnSave`   |  `true` | 世界保存时，将当前脏区块周围一圈正在实体刻的区块也标脏 |
-| `autoUnfreeze`               |  `true` | 启动加载等待结束后自动解冻；关闭后使用 `/tick unfreeze` 手动恢复 |
-| `ticketDuration`             |  `1200` | 启动加载票保留的服务器刻数；关闭自动解冻时从手动解冻开始计时 |
-| `unfreezeTimeout`            |  `2400` | 首位真人玩家加入后的启动加载等待上限；设为 0 时不启用启动屏障 |
+| `extraChunkDirtyMarking`     | `false` | 为含计划刻或方块事件的区块额外标脏                                                 |
+| `expandDirtyChunksOnSave`   |  `true` | 世界保存时，将当前脏区块周围一圈正在实体刻的区块也标脏                                       |
+| `autoUnfreeze`               |  `true` | 启动加载等待结束后自动解冻；关闭后使用 `/tick unfreeze` 手动恢复                         |
+| `autoUnfreezeWaitForPlayer`              |  `true` | 自动解冻是否等待真人玩家加入                                                    |
+| `ticketDuration`             |  `1200` | 启动加载票时长                                                           |
+| `unfreezeTimeout`            |  `2400` | 解冻超时时长                                                            |
 
 > [!IMPORTANT]
 > 注意！模组会添加新的区块nbt字段，可能会影响一些原版向的优化mod。
@@ -47,11 +48,18 @@ The mod provides the following settings, which can be changed in-game or in `saf
 | `extraChunkDirtyMarking` | `false` | Additionally mark chunks containing scheduled ticks or block events as dirty |
 | `expandDirtyChunksOnSave` | `true` | On world save, also mark the ring of surrounding chunks that are entity-ticking as dirty |
 | `autoUnfreeze` | `true` | Unfreeze automatically once the startup loading wait ends; when disabled, use `/tick unfreeze` to resume manually |
-| `ticketDuration` | `1200` | Number of server ticks the startup loading tickets are kept; when auto-unfreeze is off, the timer starts from the manual unfreeze |
-| `unfreezeTimeout` | `2400` | Upper limit on the startup loading wait after the first real player joins; set to 0 to disable the startup barrier |
+| `autoUnfreezeWaitForPlayer` | `true` | Also require a real player to join before the startup loading wait ends; disable to allow unattended automatic unfreeze, still subject to `autoUnfreeze` |
+| `ticketDuration` | `1200` | Lifetime of loading tickets added once at startup, expired by vanilla. Vanilla pauses aging while frozen; minimum 1. No player-join or manual-unfreeze timer |
+| `unfreezeTimeout` | `2400` | Startup loading limit counted from the first server tick, including frozen ticks; joining does not reset it. With `autoUnfreezeWaitForPlayer` enabled, a real player is still required after timeout. Set to 0 to disable the startup barrier |
 
 > [!IMPORTANT]
 > Note! The mod adds new chunk NBT fields, which may affect vanilla-oriented optimization mods.
 > So far, compatibility has only been tested with Lithium and C2ME (default configuration). It is very likely incompatible with multithreading mods!
 >
 > The mod has not been thoroughly tested yet. Be sure to back up your world before installing it for the first time!
+
+## 服务端测试 / Server tests
+
+运行 `python tests/server/run_matrix.py --accept-eula` 可执行 1.21.4、1.21.5、26.3 的真实服务端
+保存/重启回归矩阵，覆盖三个维度及无优化模组、Lithium、C2ME、两者同时安装的组合。
+测试独立于发布包，详见 [测试说明](tests/server/README.md)。

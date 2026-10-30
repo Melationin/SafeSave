@@ -3,7 +3,6 @@ package com.carpet.safesave.safesave.scheduled;
 
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.util.ChunkPosHelper;
-import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveSession;
 import com.carpet.safesave.safesave.SafeSaveStore;
@@ -12,7 +11,6 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.ticks.ScheduledTick;
@@ -39,7 +37,7 @@ public final class ScheduledTickManager {
             long current = level.subTickCount;
             if (data.subTickCount > current) {
                 level.subTickCount = data.subTickCount;
-                DebugLog.info("{}: restored Level.subTickCount {} -> {}",
+                DebugLog.debug("{}: restored Level.subTickCount {} -> {}",
                         dimensionId(level), current, data.subTickCount);
             }
         }
@@ -73,7 +71,7 @@ public final class ScheduledTickManager {
 
     private static void warnIfStale(final ServerLevel level, final SafeSaveLevelState levelState) {
         String dimension = dimensionId(level);
-        SafeSaveStore.DimensionData data = SafeSaveLevelAccess.of(level).savedDimension;
+        SafeSaveStore.DimensionData data = levelState.savedDimension;
         if (data.gameTime == Long.MIN_VALUE || levelState.staleWarned) {
             return;
         }

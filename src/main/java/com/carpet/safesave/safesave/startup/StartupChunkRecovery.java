@@ -3,7 +3,6 @@ package com.carpet.safesave.safesave.startup;
 import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
-import com.carpet.safesave.safesave.SafeSaveLevelState;
 import com.carpet.safesave.safesave.SafeSaveSession;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -20,7 +19,7 @@ public final class StartupChunkRecovery {
     public static void arm(final MinecraftServer server) {
         // 超时为 0 时完全不设屏障：不冻结，也不挂载入票。
         if (SafeSaveConfig.of(server).unfreezeTimeout <= 0) {
-            DebugLog.info("startup loading barrier disabled");
+            DebugLog.debug("startup loading barrier disabled");
             return;
         }
         int total = 0;
@@ -28,12 +27,12 @@ public final class StartupChunkRecovery {
             total += LevelStartupBarrier.arm(level);
         }
         if (total == 0) {
-            DebugLog.info("no level-31/32 chunks were recorded; startup needs no loading barrier");
+            DebugLog.debug("no level-31/32 chunks were recorded; startup needs no loading barrier");
             return;
         }
         server.tickRateManager().setFrozen(true);
-        DebugLog.info("startup frozen; loading {} previously ticking chunk(s), loading timeout {} server ticks from the first real player; autoUnfreeze={}",
-                total, Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout), SafeSaveConfig.of(server).autoUnfreeze);
+        DebugLog.info("startup frozen: {} chunks, timeout={} ticks",
+                total, Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout));
     }
 
     public static void update(final MinecraftServer server, final SafeSaveSession session) {
@@ -54,35 +53,23 @@ public final class StartupChunkRecovery {
                 allReady = false;
             }
         }
-        boolean playerJoined = session.firstRealPlayerTick >= 0;
+        SafeSaveConfig config = SafeSaveConfig.of(server);
+        boolean canFinish = !config.autoUnfreezeWaitForPlayer || session.realPlayerJoined;
         if (pending) {
             if (!server.tickRateManager().isFrozen()) {
                 server.tickRateManager().setFrozen(true);
                 DebugLog.warn("startup loading barrier restored the server freeze before all targets were ready");
             }
-            if (playerJoined && allReady) {
-                finish(server, session, "after all chunks loaded");
-            } else if (playerJoined
-                    && now - session.firstRealPlayerTick >= Math.max(0, SafeSaveConfig.of(server).unfreezeTimeout)) {
+            if (canFinish && allReady) {
+                finish(server, "after all chunks loaded");
+            } else if (canFinish && now >= Math.max(0, config.unfreezeTimeout)) {
                 DebugLog.warn("startup chunk wait timed out: {}/{} loaded", loaded, total);
-                finish(server, session, "after the loading timeout");
+                finish(server, "after the loading timeout");
             } else if (now - session.startupLastLogTick >= 100) {
                 session.startupLastLogTick = now;
-                DebugLog.info("startup chunk wait: {}/{} loaded{}", loaded, total,
-                        playerJoined ? "" : " (waiting for the first real player)");
+                DebugLog.debug("startup chunk wait: {}/{} loaded{}", loaded, total,
+                        canFinish ? "" : " (waiting for the first real player)");
             }
-        }
-        int origin = session.firstRealPlayerTick;
-        if (session.manualStartupUnfreeze) {
-            // 手动解冻前保留启动票，避免等待期间目标区块再次卸载。
-            if (session.unfreezeTick < 0) {
-                if (server.tickRateManager().isFrozen()) return;
-                session.unfreezeTick = now;
-            }
-            origin = session.unfreezeTick;
-        }
-        if (origin >= 0 && now - origin >= Math.max(0, SafeSaveConfig.of(server).ticketDuration)) {
-            releaseTickets(server);
         }
     }
 
@@ -90,12 +77,12 @@ public final class StartupChunkRecovery {
         if (player.getClass() != ServerPlayer.class) return;
         MinecraftServer server = player.level().getServer();
         if (server == null) return;
-        if (session.firstRealPlayerTick < 0) session.firstRealPlayerTick = server.getTickCount();
+        session.realPlayerJoined = true;
         if (anyBarrierPending(server)) {
             SafeSaveConfig config = SafeSaveConfig.of(server);
             player.sendSystemMessage(Component.literal(
                     "[SafeSave] Loading chunks active at the last save. Game ticks are frozen; the wait lasts at most "
-                            + Math.max(0, config.unfreezeTimeout) + " server ticks after the first real player joins."
+                            + Math.max(0, config.unfreezeTimeout - server.getTickCount()) + " more server ticks."
                             + (config.autoUnfreeze ? "" : " Automatic unfreeze is disabled; use /tick unfreeze after the loading wait ends."))
                     .withStyle(ChatFormatting.YELLOW));
         }
@@ -117,38 +104,24 @@ public final class StartupChunkRecovery {
         return false;
     }
 
-    private static void finish(final MinecraftServer server, final SafeSaveSession session, final String reason) {
+    private static void finish(final MinecraftServer server, final String reason) {
         for (ServerLevel level : server.getAllLevels()) {
             SafeSaveLevelAccess.of(level).startupBarrierPending = false;
+            SafeSaveLevelAccess.of(level).startupTickets.clear();
         }
         boolean autoUnfreeze = SafeSaveConfig.of(server).autoUnfreeze;
-        session.manualStartupUnfreeze = !autoUnfreeze;
         Component message;
         if (autoUnfreeze) {
-            session.unfreezeTick = server.getTickCount();
             server.tickRateManager().setFrozen(false);
-            DebugLog.info("startup unfroze {} at server tick {}", reason, session.unfreezeTick);
+            DebugLog.info("startup unfrozen {}", reason);
             message = Component.literal("[SafeSave] Startup loading wait ended; game ticks have resumed.")
                     .withStyle(ChatFormatting.GREEN);
         } else {
-            DebugLog.info("startup loading wait ended {} at server tick {}; waiting for manual unfreeze", reason, server.getTickCount());
+            DebugLog.info("startup ready {}; waiting for /tick unfreeze", reason);
             message = Component.literal("[SafeSave] Startup loading wait ended; game ticks remain frozen. Use /tick unfreeze to resume.")
                     .withStyle(ChatFormatting.YELLOW);
         }
         for (ServerPlayer player : server.getPlayerList().getPlayers()) player.sendSystemMessage(message);
     }
 
-    private static void releaseTickets(final MinecraftServer server) {
-        int released = 0;
-        for (ServerLevel level : server.getAllLevels()) {
-            SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-            if (!state.startupTicketsHeld || state.startupBarrierPending) {
-                continue;
-            }
-            released += LevelStartupBarrier.releaseTickets(level);
-        }
-        if (released > 0) {
-            DebugLog.info("released {} startup loading ticket(s) at server tick {}", released, server.getTickCount());
-        }
-    }
 }

@@ -1,5 +1,6 @@
 package com.carpet.safesave.safesave.startup;
 
+import com.carpet.safesave.config.SafeSaveConfig;
 import com.carpet.safesave.debug.DebugLog;
 import com.carpet.safesave.safesave.SafeSaveLevelAccess;
 import com.carpet.safesave.safesave.SafeSaveLevelState;
@@ -24,20 +25,6 @@ import static com.carpet.safesave.util.Util.dimensionId;
 
 public final class LevelStartupBarrier {
 
-    //? if <1.21.5 {
-    /*private static final TicketType<Unit> SSTicketType =
-        TicketType.create("safesave_startup_load", (first, second) -> 0);
-    *///?} else if < 1.21.9{
-    /*private static final TicketType SSTicketType =
-        new TicketType(0L, false, TicketType.TicketUse.LOADING_AND_SIMULATION);
-    *///?} else {
-    private static final TicketType SSTicketType =
-        new TicketType(0, TicketType.FLAG_LOADING|TicketType.FLAG_SIMULATION| TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
-    //?}
-
-    // 两次采集间世界时间增量不超过此值时，区块集合的收缩只可能是卸载造成的假象，而非世界真的变小，
-    // 此时对上一次的清单取并集；超过才整体替换，否则清单会跨会话无限累积。
-    // （暂停中 getGameTime() 不推进，所以"暂停保存 -> 关服"的间隔天然是 0。）
     private static final long UNION_WINDOW_TICKS = 10;
 
     private LevelStartupBarrier() {}
@@ -51,8 +38,6 @@ public final class LevelStartupBarrier {
     // 返回该维度需要等待的区块数；>0 时置位并挂票。冻结由服务器负责。
     public static int arm(final ServerLevel level) {
         SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-        // 只数 31/32：挂票时同一批条目会被再过滤一次，两处口径必须一致，否则第一个 tick 就会
-        // 判定"全部加载完"而立刻解冻。
         int total = 0;
         for (Long2ByteMap.Entry entry : state.savedDimension.tickingChunks.long2ByteEntrySet()) {
             if (entry.getByteValue() == 31 || entry.getByteValue() == 32) total++;
@@ -61,13 +46,21 @@ public final class LevelStartupBarrier {
             return 0;
         }
         state.startupBarrierPending = true;
-        state.startupTicketsHeld = true;
+        int duration = Math.max(1, SafeSaveConfig.of(level.getServer()).ticketDuration);
+        //? if <1.21.5 {
+        /*TicketType<Unit> ticketType = TicketType.create("safesave_startup_load", (first, second) -> 0, duration);
+        *///?} else if <1.21.9 {
+        /*TicketType ticketType = new TicketType(duration, false, TicketType.TicketUse.LOADING_AND_SIMULATION);
+        *///?} else {
+        TicketType ticketType = new TicketType(duration,
+                TicketType.FLAG_LOADING | TicketType.FLAG_SIMULATION | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
+        //?}
         for (Long2ByteMap.Entry entry : state.savedDimension.tickingChunks.long2ByteEntrySet()) {
             byte ticketLevel = entry.getByteValue();
             if (ticketLevel != 31 && ticketLevel != 32) continue;
             long key = entry.getLongKey();
             state.startupTickets.put(key, ticketLevel);
-            addStartupTicket(level, key, ticketLevel);
+            addStartupTicket(level, key, ticketLevel, ticketType);
         }
         level.getChunkSource().runDistanceManagerUpdates();
         return total;
@@ -104,7 +97,7 @@ public final class LevelStartupBarrier {
         source.runDistanceManagerUpdates();
         Long2ByteOpenHashMap fresh = new Long2ByteOpenHashMap();
         //? if <1.21.5 {
-        /*// 层级 31 = 实体刻、32 = 仅方块刻，实体刻是方块刻的子集，所以必须先判实体刻。
+        /*
         DistanceManager distanceManager = source.chunkMap.getDistanceManager();
         for (Long2ObjectMap.Entry<ChunkHolder> holder : source.chunkMap.visibleChunkMap.long2ObjectEntrySet()) {
             long key = holder.getLongKey();
@@ -129,7 +122,7 @@ public final class LevelStartupBarrier {
                 && now - state.lastTickingCaptureGameTime <= UNION_WINDOW_TICKS) {
             levels = union(state.tickingChunksAtTickEnd, fresh);
             if (levels.size() != state.tickingChunksAtTickEnd.size()) {
-                DebugLog.info("{}: ticking list changed within {} tick(s) of the previous capture ({} -> {}); "
+                DebugLog.debug("{}: ticking list changed within {} tick(s) of the previous capture ({} -> {}); "
                                 + "kept the union of {} chunk(s)",
                         dimensionId(level), UNION_WINDOW_TICKS,
                         state.tickingChunksAtTickEnd.size(), fresh.size(), levels.size());
@@ -138,20 +131,6 @@ public final class LevelStartupBarrier {
         state.tickingChunksAtTickEnd = levels;
         state.lastTickingCaptureGameTime = now;
         state.tickingSnapshotAvailable = true;
-    }
-
-    // 释放本维度自己的启动票，返回释放数。
-    public static int releaseTickets(final ServerLevel level) {
-        SafeSaveLevelState state = SafeSaveLevelAccess.of(level);
-        int released = 0;
-        for (Long2ByteMap.Entry entry : state.startupTickets.long2ByteEntrySet()) {
-            removeStartupTicket(level, entry.getLongKey(), entry.getByteValue());
-            released++;
-        }
-        state.startupTickets.clear();
-        state.startupTicketsHeld = false;
-        level.getChunkSource().runDistanceManagerUpdates();
-        return released;
     }
 
     // 同一区块两次分类不同时取更小的那个：31（实体刻）比 32（仅方块刻）更强。
@@ -170,25 +149,16 @@ public final class LevelStartupBarrier {
         return merged;
     }
 
-    private static void addStartupTicket(final ServerLevel level, final long chunkPos, final byte ticketLevel) {
+    private static void addStartupTicket(final ServerLevel level, final long chunkPos, final byte ticketLevel,
+                                        final TicketType ticketType) {
         //? if <1.21.5 {
         /*level.getChunkSource().chunkMap.getDistanceManager()
-                .addTicket((TicketType<Unit>) SSTicketType,
+                .addTicket((TicketType<Unit>) ticketType,
                         new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
         *///?} else {
         level.getChunkSource().ticketStorage.addTicket(chunkPos,
-                new Ticket(SSTicketType, ticketLevel));
+                new Ticket(ticketType, ticketLevel));
         //?}
     }
 
-    private static void removeStartupTicket(final ServerLevel level, final long chunkPos, final byte ticketLevel) {
-        //? if <1.21.5 {
-        /*level.getChunkSource().chunkMap.getDistanceManager()
-                .removeTicket((TicketType<Unit>) SSTicketType,
-                        new ChunkPos(chunkPos), ticketLevel, Unit.INSTANCE);
-        *///?} else {
-        level.getChunkSource().ticketStorage.removeTicket(chunkPos,
-                new Ticket(SSTicketType, ticketLevel));
-        //?}
-    }
 }

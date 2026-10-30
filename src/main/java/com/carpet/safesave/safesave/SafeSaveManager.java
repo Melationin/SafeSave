@@ -16,7 +16,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
 
 import java.util.Locale;
@@ -50,19 +49,15 @@ public final class SafeSaveManager {
             ScheduledTickManager.restoreSubTickCount(level, SafeSaveLevelAccess.of(level).savedDimension);
         }
         if (loaded == 0) {
-            DebugLog.info("no {} found; this session starts from vanilla chunk ticks", SafeSaveFiles.FILE_NAME);
+            DebugLog.debug("no {} found; this session starts from vanilla chunk ticks", SafeSaveFiles.FILE_NAME);
         } else {
-            DebugLog.info("loaded world metadata from {} safesave file(s) (debug: serverTick={})",
-                    loaded, session.serverTickCount);
+            DebugLog.info("loaded {} world metadata file(s)", loaded);
         }
     }
 
 
     public static void onFirstServerTick(final MinecraftServer server) {
         SafeSaveSession session = SafeSaveSession.of(server);
-        if (session == null) {
-            return;
-        }
         if (session.freezeArmed) {
             session.freezeArmed = false;
             StartupChunkRecovery.arm(server);
@@ -75,13 +70,12 @@ public final class SafeSaveManager {
     }
 
     public static void onServerTickChildrenStart(final MinecraftServer server) {
-        SafeSaveSession session = SafeSaveSession.of(server);
-        if (session != null) session.serverTickRunning = true;
+        SafeSaveSession.of(server).serverTickRunning = true;
     }
 
     public static void onPlayerJoined(final ServerPlayer player) {
         SafeSaveSession session = SafeSaveSession.of(player.level().getServer());
-        if (session != null) StartupChunkRecovery.onPlayerJoined(player, session);
+        StartupChunkRecovery.onPlayerJoined(player, session);
     }
 
     public static void onChunkTagRead(final ServerLevel level, final CompoundTag chunkData) {
@@ -132,7 +126,7 @@ public final class SafeSaveManager {
             return;
         }
         SafeSaveSession session = SafeSaveSession.of(level.getServer());
-        if (session == null || session.freezeArmed || levelState.startupBarrierPending
+        if (session.freezeArmed || levelState.startupBarrierPending
                 || !level.tickRateManager().runsNormally()) {
             return;
         }
@@ -146,7 +140,7 @@ public final class SafeSaveManager {
                     "%s: restore took %.3f ms (pending chunks=%d, server tick=%d)",
                     com.carpet.safesave.util.Util.dimensionId(level), elapsedMs,
                     pending, level.getServer().getTickCount());
-            DebugLog.info("{}", timing);
+            DebugLog.debug("{}", timing);
         }
     }
 
@@ -157,33 +151,34 @@ public final class SafeSaveManager {
 
     public static boolean isTickEndPending(MinecraftServer server) {
         SafeSaveSession session = SafeSaveSession.of(server);
-        return session != null && session.serverTickRunning
+        return session.serverTickRunning
                 && session.finalizedServerTick != server.getTickCount();
     }
 
     public static boolean shouldDeferChunkMapSave(ServerLevel level) {
         SafeSaveSession session = SafeSaveSession.of(level.getServer());
-        return shouldRun(level.getServer()) && session != null && !session.freezeArmed
+        return shouldRun(level.getServer()) && !session.freezeArmed
                 && !level.getServer().isStopped()
                 && (isTickEndPending(level.getServer()) || !canCaptureSnapshot(level));
     }
 
     public static void onServerTickEnd(final MinecraftServer server, final BooleanSupplier haveTime) {
         SafeSaveSession session = SafeSaveSession.of(server);
-        if (session != null) {
-            session.finalizedServerTick = server.getTickCount();
-            session.serverTickRunning = false;
-            if (session.deferredSaveEverything) {
-                boolean silent = session.deferredSilent;
-                boolean flush = session.deferredFlush;
-                boolean force = session.deferredForce;
-                clearDeferredServerSave(session);
+        session.finalizedServerTick = server.getTickCount();
+        session.serverTickRunning = false;
+        if (session.deferredSaveEverything || session.deferredSaveAllChunks) {
+            boolean everything = session.deferredSaveEverything;
+            boolean silent = session.deferredSilent;
+            boolean flush = session.deferredFlush;
+            boolean force = session.deferredForce;
+            session.deferredSaveEverything = false;
+            session.deferredSaveAllChunks = false;
+            session.deferredSilent = true;
+            session.deferredFlush = false;
+            session.deferredForce = false;
+            if (everything) {
                 server.saveEverything(silent, flush, force);
-            } else if (session.deferredSaveAllChunks) {
-                boolean silent = session.deferredSilent;
-                boolean flush = session.deferredFlush;
-                boolean force = session.deferredForce;
-                clearDeferredServerSave(session);
+            } else {
                 server.saveAllChunks(silent, flush, force);
             }
         }
@@ -200,14 +195,6 @@ public final class SafeSaveManager {
                 level.getChunkSource().chunkMap.processUnloads(haveTime);
             }
         }
-    }
-
-    private static void clearDeferredServerSave(SafeSaveSession session) {
-        session.deferredSaveEverything = false;
-        session.deferredSaveAllChunks = false;
-        session.deferredSilent = true;
-        session.deferredFlush = false;
-        session.deferredForce = false;
     }
 
     public static boolean deferSaveEverything(MinecraftServer server,
@@ -229,8 +216,7 @@ public final class SafeSaveManager {
     }
 
     private static boolean needsTickEndSave(MinecraftServer server, SafeSaveSession session) {
-        if (!shouldRun(server) || session == null
-                || session.freezeArmed || server.isStopped()) return false;
+        if (!shouldRun(server) || session.freezeArmed || server.isStopped()) return false;
         return isTickEndPending(server);
     }
 
@@ -256,7 +242,7 @@ public final class SafeSaveManager {
             return;
         }
         SafeSaveSession session = SafeSaveSession.of(server);
-        if (session == null || session.freezeArmed) {
+        if (session.freezeArmed) {
             return;
         }
         SafeSaveFiles.saveAll(server, session, captureTicking);

@@ -10,11 +10,9 @@ public final class SafeSaveSession {
     public long serverGameTime = Long.MIN_VALUE;
 
     public boolean freezeArmed = true;//在首刻前冻结被处理之前为true
-    // 首次自动或手动解冻后永久为 true；再次冻结不会重开启动接管窗口。
+    // 首次自动或手动解冻后永久为 true
     public boolean startupUnfrozen;
-    public int firstRealPlayerTick = -1;
-    public int unfreezeTick = -1;
-    public boolean manualStartupUnfreeze;
+    public boolean realPlayerJoined;
     public int startupLastLogTick = -1;
     public int finalizedServerTick = Integer.MIN_VALUE;
     public boolean serverTickRunning;

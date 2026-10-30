@@ -53,6 +53,8 @@ def legacyAW = { b -> b.replace("classTweaker  v1  official", "classTweaker v1 n
 def legacyIds = { b ->
     b.replace("net.minecraft.world.entity.vehicle.minecart.AbstractMinecart",
             "net.minecraft.world.entity.vehicle.AbstractMinecart")
+    b.replace("net.minecraft.world.entity.vehicle.minecart.MinecartFurnace",
+            "net.minecraft.world.entity.vehicle.MinecartFurnace")
     b.replace("net.minecraft.resources.Identifier", "net.minecraft.resources.ResourceLocation")
     // 裸类名也要换：Identifier.tryParse(...) / "Identifier id = ..."
     b.replace("Identifier", "ResourceLocation")
@@ -177,4 +179,9 @@ publishing {
 
 stonecutter {
     // 子项目配置
+}
+
+// Opt-in, separate server test mod; never included in the published SafeSave jar.
+if (providers.gradleProperty("safeSaveServerTests").isPresent()) {
+    apply from: rootProject.file("tests/server/server-tests.gradle")
 }

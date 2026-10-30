@@ -172,16 +172,6 @@ final class ValueReaderView implements NbtView.Reader {
         this.tag = tag;
     }
 
-    private static CompoundTag liveChild(final CompoundTag tag, final String key) {
-        CompoundTag existing = TagCompat.childOrNull(tag, key);
-        if (existing != null) {
-            return existing;
-        }
-        CompoundTag created = new CompoundTag();
-        tag.put(key, created);
-        return created;
-    }
-
     @Override
     public void putInt(final String key, final int value) {
         this.tag.putInt(key, value);
@@ -214,7 +204,12 @@ final class ValueReaderView implements NbtView.Reader {
 
     @Override
     public NbtView.Writer child(final String key) {
-        return new TagWriterView(liveChild(this.tag, key));
+        CompoundTag child = TagCompat.childOrNull(this.tag, key);
+        if (child == null) {
+            child = new CompoundTag();
+            this.tag.put(key, child);
+        }
+        return new TagWriterView(child);
     }
 }
 

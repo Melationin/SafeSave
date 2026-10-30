@@ -46,7 +46,6 @@ public final class SafeSaveLevelState {
     public final Long2ByteOpenHashMap startupTickets = new Long2ByteOpenHashMap();
 
     public boolean startupBarrierPending;
-    public boolean startupTicketsHeld;
 
     public final OrderSequence blockEntityOrder = new OrderSequence();
 

@@ -35,6 +35,17 @@ public abstract class EntityMixin implements EntityOrderHolder
     @Unique
     private long SS$entityOrder = Long.MIN_VALUE;
 
+    // 实例首次入队保留读档序号；重入才重分配。此标记不写入 NBT。
+    @Unique
+    private boolean SS$enteredTickList;
+
+    @Override
+    public boolean SS$markTickListEntry() {
+        boolean previous = this.SS$enteredTickList;
+        this.SS$enteredTickList = true;
+        return previous;
+    }
+
     @Override
     public long SS$entityOrder() {
         return this.SS$entityOrder;

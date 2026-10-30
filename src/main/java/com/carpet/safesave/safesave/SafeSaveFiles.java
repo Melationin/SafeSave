@@ -80,7 +80,7 @@ public final class SafeSaveFiles {
         }
 
         if (startupChunkTargets == 0) {
-            DebugLog.info("skipped safesave world metadata write (0 ticking chunk(s) captured); "
+            DebugLog.debug("skipped safesave world metadata write (0 ticking chunk(s) captured); "
                             + "{} chunk(s) still pending rebuild", pending);
             return;
         }
@@ -92,7 +92,7 @@ public final class SafeSaveFiles {
                     SafeSaveLevelAccess.of(level).savedDimension));
         }
 
-        DebugLog.info("saved safesave world metadata over {} dimension(s); {} chunk(s) still pending rebuild; "
+        DebugLog.debug("saved safesave world metadata over {} dimension(s); {} chunk(s) still pending rebuild; "
                         + "{} ticking chunk(s) recorded for next startup",
                 server.levelKeys().size(), pending, startupChunkTargets);
     }

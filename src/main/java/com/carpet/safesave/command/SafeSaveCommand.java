@@ -46,6 +46,7 @@ public final class SafeSaveCommand {
         show(source, "extraChunkDirtyMarking", config.extraChunkDirtyMarking);
         show(source, "expandDirtyChunksOnSave", config.expandDirtyChunksOnSave);
         show(source, "autoUnfreeze", config.autoUnfreeze);
+        show(source, "autoUnfreezeWaitForPlayer", config.autoUnfreezeWaitForPlayer);
         show(source, "ticketDuration", config.ticketDuration);
         show(source, "unfreezeTimeout", config.unfreezeTimeout);
         return 1;
