@@ -58,11 +58,6 @@ The mod provides the following settings, which can be changed in-game or in `saf
 >
 > The mod has not been thoroughly tested yet. Be sure to back up your world before installing it for the first time!
 
-## 服务端测试 / Server tests
-
-运行 `python tests/server/run_matrix.py --accept-eula` 可执行 1.21.4、1.21.5、26.3 的真实服务端
-保存/重启回归矩阵，覆盖三个维度及无优化模组、Lithium、C2ME、两者同时安装的组合。
-测试独立于发布包，详见 [测试说明](tests/server/README.md)。
 
 Run `python tests/server/run_matrix.py --accept-eula` to execute the dedicated-server save/restart
 regression matrix for 1.21.4, 1.21.5, and 26.3. It covers all three dimensions with no optimization
