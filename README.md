@@ -58,8 +58,3 @@ The mod provides the following settings, which can be changed in-game or in `saf
 >
 > The mod has not been thoroughly tested yet. Be sure to back up your world before installing it for the first time!
 
-
-Run `python tests/server/run_matrix.py --accept-eula` to execute the dedicated-server save/restart
-regression matrix for 1.21.4, 1.21.5, and 26.3. It covers all three dimensions with no optimization
-mods, Lithium, C2ME, and both installed. Tests are separate from the release JAR;
-see the [test documentation](tests/server/README.md).
