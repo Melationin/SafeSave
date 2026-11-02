@@ -13,6 +13,7 @@ SafeSave 是一个用于重载世界时更好恢复计划刻、方块事件和�
 | 设置项                          |     默认值 | 用途                                |
 |------------------------------|--------:|-----------------------------------|
 | `safeSave`                   |  `true` | 启用保存与启动恢复                         |
+| `saveMobExtraData`           | `false` | 保存并恢复 Mob 及其子类的 SafeSave 额外实体数据 |
 | `rebuildStartupOnly`         |  `true` | 仅接管首次自动或手动解冻前新加载的区块。关闭后持续接管所有新加载区块|
 | `extraChunkDirtyMarking`     | `false` | 为含计划刻或方块事件的区块额外标脏                 |
 | `expandDirtyChunksOnSave`    |  `true` | 世界保存时，将当前脏区块周围一圈正在实体刻的区块也标脏       |
@@ -44,6 +45,7 @@ The mod provides the following settings, which can be changed in-game or in `saf
 | Setting | Default | Purpose |
 |---|---|---|
 | `safeSave` | `true` | Enable saving and startup restoration |
+| `saveMobExtraData` | `false` | Save and restore SafeSave's extra entity data for Mob and its subclasses; when disabled, ignore existing extra data without affecting vanilla data |
 | `rebuildStartupOnly` | `true` | Take over newly loaded chunks before the first automatic or manual unfreeze, plus newly loaded chunks in the dimension's chunksToRestore set; when disabled, take over all newly loaded chunks |
 | `extraChunkDirtyMarking` | `false` | Additionally mark chunks containing scheduled ticks or block events as dirty |
 | `expandDirtyChunksOnSave` | `true` | On world save, also mark the ring of surrounding chunks that are entity-ticking as dirty |

@@ -126,7 +126,7 @@ public abstract class EntityMixin implements EntityOrderHolder
                       CallbackInfo
                       //?}
                               ci) {
-        if (!SafeSaveNbt.enabled(((Entity) (Object) this).level())) {
+        if (!SafeSaveNbt.enabled((Entity) (Object) this)) {
             return;
         }
         NbtView.Writer safe = SafeSaveNbt.child(NbtView.writer(output));
@@ -163,7 +163,7 @@ public abstract class EntityMixin implements EntityOrderHolder
                       ValueInput
                       //?}
                               input, final CallbackInfo ci) {
-        if (!SafeSaveNbt.enabled(((Entity) (Object) this).level())) {
+        if (!SafeSaveNbt.enabled((Entity) (Object) this)) {
             return;
         }
         NbtView.Reader safe = SafeSaveNbt.childOrNull(NbtView.reader(input));

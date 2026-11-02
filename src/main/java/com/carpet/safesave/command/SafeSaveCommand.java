@@ -42,6 +42,7 @@ public final class SafeSaveCommand {
     private static int list(final CommandSourceStack source) {
         SafeSaveConfig config = SafeSaveConfig.of(source.getServer());
         show(source, "safeSave", config.safeSave);
+        show(source, "saveMobExtraData", config.saveMobExtraData);
         show(source, "rebuildStartupOnly", config.rebuildStartupOnly);
         show(source, "extraChunkDirtyMarking", config.extraChunkDirtyMarking);
         show(source, "expandDirtyChunksOnSave", config.expandDirtyChunksOnSave);

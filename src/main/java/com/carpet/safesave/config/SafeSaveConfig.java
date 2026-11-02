@@ -13,9 +13,10 @@ import java.util.List;
 public final class SafeSaveConfig {
 
     public static final List<String> NAMES = List.of(
-            "safeSave", "rebuildStartupOnly", "extraChunkDirtyMarking", "expandDirtyChunksOnSave", "autoUnfreeze", "autoUnfreezeWaitForPlayer", "ticketDuration", "unfreezeTimeout");
+            "safeSave", "saveMobExtraData", "rebuildStartupOnly", "extraChunkDirtyMarking", "expandDirtyChunksOnSave", "autoUnfreeze", "autoUnfreezeWaitForPlayer", "ticketDuration", "unfreezeTimeout");
 
     public boolean safeSave = true;
+    public boolean saveMobExtraData = false;
     public boolean rebuildStartupOnly = true;
     public boolean extraChunkDirtyMarking = false;
     public boolean expandDirtyChunksOnSave = true;
@@ -36,7 +37,7 @@ public final class SafeSaveConfig {
     // 供命令补全使用；非布尔项返回空表。
     public static List<String> values(final String name) {
         return switch (name) {
-            case "safeSave", "rebuildStartupOnly", "extraChunkDirtyMarking", "expandDirtyChunksOnSave", "autoUnfreeze", "autoUnfreezeWaitForPlayer" -> List.of("true", "false");
+            case "safeSave", "saveMobExtraData", "rebuildStartupOnly", "extraChunkDirtyMarking", "expandDirtyChunksOnSave", "autoUnfreeze", "autoUnfreezeWaitForPlayer" -> List.of("true", "false");
             default -> List.of();
         };
     }
@@ -66,6 +67,7 @@ public final class SafeSaveConfig {
         try {
             Files.write(this.file, List.of(
                     "safeSave " + this.safeSave,
+                    "saveMobExtraData " + this.saveMobExtraData,
                     "rebuildStartupOnly " + this.rebuildStartupOnly,
                     "extraChunkDirtyMarking " + this.extraChunkDirtyMarking,
                     "expandDirtyChunksOnSave " + this.expandDirtyChunksOnSave,
@@ -83,6 +85,7 @@ public final class SafeSaveConfig {
         try {
             switch (name) {
                 case "safeSave" -> this.safeSave = booleanValue(value);
+                case "saveMobExtraData" -> this.saveMobExtraData = booleanValue(value);
                 case "rebuildStartupOnly" -> this.rebuildStartupOnly = booleanValue(value);
                 case "extraChunkDirtyMarking" -> this.extraChunkDirtyMarking = booleanValue(value);
                 case "expandDirtyChunksOnSave" -> this.expandDirtyChunksOnSave = booleanValue(value);
